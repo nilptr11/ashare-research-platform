@@ -1,0 +1,171 @@
+# tushare-fastcli
+
+面向大模型和量化业务的 Tushare 快速调用 CLI。项目把公开接口索引结构化为内置清单，调用方只需要给出接口名、参数和输出格式，不需要现场编写 Python 代码。
+
+## 设计原则
+
+- KISS：一个统一 `call` 入口覆盖全部接口，避免为 229 个接口维护重复脚本。
+- DRY：接口元数据来自 `references/data-interfaces.md`，通过生成脚本产出 `interfaces.json`。
+- YAGNI：不预先爬取所有接口详情，只保存索引和文档链接；具体入参按业务需要传入。
+- SOLID：注册表、参数解析、Tushare 调用、输出渲染分层实现。
+
+## 安装
+
+```bash
+python3 -m pip install -e .
+```
+
+也可以用 uv 管理环境：
+
+```bash
+uv sync
+uv run tsfc list --search 日线
+```
+
+## 配置
+
+复制示例配置并填写 token：
+
+```bash
+cp .env.example .env
+```
+
+`.env` 支持：
+
+```bash
+TUSHARE_TOKEN=your_tushare_token_here
+TUSHARE_PROXY_URL=https://your-tushare-proxy.example.com
+TUSHARE_POINTS=15000
+TUSHARE_ALLOW_SEPARATE_PERMISSION=false
+```
+
+配置优先级是：CLI 参数 > 系统环境变量 > `.env`。`TUSHARE_PROXY_URL` 留空时使用 Tushare SDK 默认地址。`TUSHARE_POINTS` 用于本地调用前权限判断，`TUSHARE_ALLOW_SEPARATE_PERMISSION=false` 时需要 `--force` 才会调用需单独权限的接口。
+
+## 常用命令
+
+查看接口清单：
+
+```bash
+tsfc list --search 日线
+tsfc list --category 股票数据
+tsfc list --eligibility points_ok
+tsfc list --eligibility needs_separate_permission
+tsfc categories
+```
+
+未安装命令入口时，也可以直接用脚本：
+
+```bash
+python3 scripts/tushare_call.py list --search 日线
+```
+
+查看接口说明和官方文档链接：
+
+```bash
+tsfc info daily
+tsfc info pro_bar --doc-id 109
+tsfc info cyq_chips
+tsfc defaults daily
+```
+
+调用接口并输出 JSON：
+
+```bash
+tsfc call daily \
+  -p ts_code=000001.SZ \
+  -p start_date=20240101 \
+  -p end_date=20240131 \
+  --fields ts_code,trade_date,open,close,vol \
+  --format json
+```
+
+CLI 会根据 `.env` 中的 `TUSHARE_POINTS` 和内置权限元数据拦截明显积分不足或需单独权限的接口；确需尝试时使用 `--force`：
+
+```bash
+tsfc call cyq_perf --params '{"trade_date":"20260423"}' --force --format json
+```
+
+调用接口并保存 CSV：
+
+```bash
+tsfc call stock_basic \
+  -p exchange= \
+  -p list_status=L \
+  --fields ts_code,symbol,name,area,industry,list_date \
+  --format csv \
+  --output stock_basic.csv
+```
+
+JSON 参数适合大模型工具调用：
+
+```bash
+tsfc call trade_cal \
+  --params '{"exchange":"SSE","start_date":"20240101","end_date":"20240131"}' \
+  --format json
+```
+
+`key=value` 会按字符串传入；需要传数字、布尔、数组或对象时，用 `key:=JSON`：
+
+```bash
+tsfc call some_api -p limit:=100 -p flags:='["a","b"]'
+```
+
+## 更新接口清单
+
+```bash
+python3 scripts/generate_interfaces.py \
+  --source references/data-interfaces.md \
+  --output src/tushare_fastcli/interfaces.json
+```
+
+## 测试
+
+```bash
+PYTHONPATH=src python3 -m unittest discover -s tests
+uv run python -m unittest discover -s tests
+```
+
+批量验证 Tushare 接口连通性：
+
+```bash
+uv run python scripts/smoke_all_interfaces.py --env-file .env --output-dir reports
+```
+
+该脚本默认按接口索引逐条调用，跳过积分不足和需单独权限的接口，默认间隔 `0.6s`，尽量只请求 1 条数据，并只保存成功/失败、行数、列数、耗时和错误原因。
+脚本会使用内置默认参数模板 `api_defaults.json`，并在报告中带上 `known_issues.json` 里的已知问题摘要。
+如需强制包含受限接口：
+
+```bash
+uv run python scripts/smoke_all_interfaces.py --env-file .env --include-restricted --output-dir reports
+```
+
+如需临时禁用 `.env` 中的代理：
+
+```bash
+uv run python scripts/smoke_all_interfaces.py --env-file .env --proxy-url "" --output-dir reports
+```
+
+## Python 调用
+
+```python
+from tushare_fastcli.client import TushareCaller
+
+caller = TushareCaller()
+df = caller.call(
+    "daily",
+    params={"trade_date": "20260423"},
+    fields="ts_code,trade_date,close",
+)
+```
+
+代理设置按 Tushare SDK 的 `DataApi` 类级 URL 生效，等价于：
+
+```python
+from tushare.pro import client as ts_client
+
+ts_client.DataApi._DataApi__http_url = "https://your-tushare-proxy.example.com"
+```
+
+## 说明
+
+本项目不会绕过 Tushare 的 token、积分和接口权限限制。若某接口在账号侧没有权限，CLI 会直接返回 Tushare SDK 的错误信息。

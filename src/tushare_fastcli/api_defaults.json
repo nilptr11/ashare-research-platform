@@ -1,0 +1,32 @@
+{
+  "daily": {
+    "trade_date": "20260423"
+  },
+  "daily_basic": {
+    "trade_date": "20260423"
+  },
+  "adj_factor": {
+    "trade_date": "20260423"
+  },
+  "cyq_perf": {
+    "trade_date": "20260423"
+  },
+  "cyq_chips": {
+    "ts_code": "600000.SH",
+    "trade_date": "20220429"
+  },
+  "us_fina_indicator": {
+    "ts_code": "NVDA",
+    "period": "20241231"
+  },
+  "us_balancesheet": {
+    "ts_code": "NVDA",
+    "start_date": "20240101",
+    "end_date": "20260101"
+  },
+  "pro_bar": {
+    "ts_code": "000001.SZ",
+    "start_date": "20260423",
+    "end_date": "20260423"
+  }
+}

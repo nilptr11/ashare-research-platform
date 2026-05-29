@@ -1,0 +1,10 @@
+{
+  "cyq_chips": [
+    {
+      "scope": "proxy",
+      "status": "open",
+      "summary": "代理端可能未正确识别 ts_code 参数",
+      "detail": "2026-05-29 实测通过 SDK 和原始 HTTP payload 均传入 ts_code 后，代理仍返回“必填参数, ts_code”。这更像代理端参数转发或校验问题，不应归因于本地 CLI 或积分权限。"
+    }
+  ]
+}
