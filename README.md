@@ -1,21 +1,8 @@
 # tushare-fastcli
 
-面向大模型和量化业务的 Tushare 快速调用 CLI。项目把公开接口索引结构化为内置清单，调用方只需要给出接口名、参数和输出格式，不需要现场编写 Python 代码。
-
-## 设计原则
-
-- KISS：一个统一 `call` 入口覆盖全部接口，避免为 229 个接口维护重复脚本。
-- DRY：接口元数据来自 `references/data-interfaces.md`，通过生成脚本产出 `interfaces.json`。
-- YAGNI：不预先爬取所有接口详情，只保存索引和文档链接；具体入参按业务需要传入。
-- SOLID：注册表、参数解析、Tushare 调用、输出渲染分层实现。
+ Tushare 快速调用 CLI。项目把公开接口索引结构化为内置清单，调用方只需要给出接口名、参数和输出格式，不需要现场编写 Python 代码。
 
 ## 安装
-
-```bash
-python3 -m pip install -e .
-```
-
-也可以用 uv 管理环境：
 
 ```bash
 uv sync
