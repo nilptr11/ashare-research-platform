@@ -26,11 +26,20 @@ class DefaultsAndIssuesTest(unittest.TestCase):
             {"ts_code": "000001.SZ", "freq": "1MIN"},
         )
 
+    def test_default_params_include_official_doc_samples(self) -> None:
+        self.assertEqual(default_params("margin_secs"), {"trade_date": "20240417", "exchange": "SSE"})
+        self.assertEqual(default_params("rt_etf_k"), {"ts_code": "510300.SH", "topic": "HQ_FND_TICK"})
+
     def test_known_issues_for_cyq_chips(self) -> None:
         issues = known_issues("cyq_chips")
 
         self.assertTrue(issues)
         self.assertIn("ts_code", issues[0]["summary"])
+
+    def test_known_issues_for_runtime_empty(self) -> None:
+        issues = known_issues("rt_idx_k")
+
+        self.assertEqual(issues[0]["scope"], "runtime-empty-realtime")
 
 
 if __name__ == "__main__":

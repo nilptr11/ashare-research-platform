@@ -101,7 +101,13 @@
   "hk_mins": {
     "ts_code": "00700.HK",
     "freq": "1min",
-    "trade_date": "20260423"
+    "start_date": "2023-03-13 09:00:00",
+    "end_date": "2023-03-13 19:00:00"
+  },
+  "hk_daily_adj": {
+    "ts_code": "00700.HK",
+    "start_date": "20240722",
+    "end_date": "20240722"
   },
   "idx_factor_pro": {
     "trade_date": "20260423"
@@ -143,10 +149,15 @@
     "start_date": "20240101",
     "end_date": "20260430"
   },
+  "margin_secs": {
+    "trade_date": "20240417",
+    "exchange": "SSE"
+  },
   "opt_mins": {
-    "ts_code": "10000001.SH",
+    "ts_code": "10007976.SH",
     "freq": "1min",
-    "trade_date": "20260423"
+    "start_date": "2024-09-27 09:00:00",
+    "end_date": "2024-09-27 19:00:00"
   },
   "pro_bar": {
     "ts_code": "000001.SZ",
@@ -157,7 +168,8 @@
     "ts_code": "000001.SH"
   },
   "rt_etf_k": {
-    "ts_code": "510300.SH"
+    "ts_code": "510300.SH",
+    "topic": "HQ_FND_TICK"
   },
   "rt_min": {
     "ts_code": "000001.SZ",
@@ -182,6 +194,13 @@
   },
   "stk_rewards": {
     "ts_code": "000001.SZ"
+  },
+  "slb_len": {
+    "start_date": "20240601",
+    "end_date": "20240620"
+  },
+  "slb_sec": {
+    "trade_date": "20240620"
   },
   "stk_week_month_adj": {
     "ts_code": "000001.SZ",
@@ -227,6 +246,10 @@
     "ts_code": "NVDA",
     "start_date": "20240101",
     "end_date": "20260101"
+  },
+  "us_daily_adj": {
+    "trade_date": "20240722",
+    "exhange": "NAS"
   },
   "weekly": {
     "ts_code": "000001.SZ",

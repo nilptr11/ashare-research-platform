@@ -1,5 +1,6 @@
 import os
 import unittest
+from datetime import datetime
 from unittest.mock import patch
 
 from tushare_fastcli.provider import (
@@ -190,6 +191,54 @@ class ProviderTest(unittest.TestCase):
             caller.calls[0]["params"],
             {"exchange": "SSE", "start_date": "20260516", "end_date": "20260531"},
         )
+
+    def test_latest_trade_date_includes_as_of_when_open(self) -> None:
+        calendar = [
+            {"cal_date": "20260601", "is_open": 1},
+            {"cal_date": "20260531", "is_open": 0},
+            {"cal_date": "20260530", "is_open": 0},
+            {"cal_date": "20260529", "is_open": 1},
+        ]
+        caller = FakeCaller(calendar)
+        provider = make_provider(make_registry({"api_name": "trade_cal"}), caller=caller)
+
+        self.assertEqual(provider.latest_trade_date(as_of="2026-06-01"), "20260601")
+
+    def test_previous_trade_date_excludes_as_of(self) -> None:
+        calendar = [
+            {"cal_date": "20260531", "is_open": 0},
+            {"cal_date": "20260530", "is_open": 0},
+            {"cal_date": "20260529", "is_open": 1},
+        ]
+        caller = FakeCaller(calendar)
+        provider = make_provider(make_registry({"api_name": "trade_cal"}), caller=caller)
+
+        self.assertEqual(provider.previous_trade_date(as_of="2026-06-01"), "20260529")
+        self.assertEqual(
+            caller.calls[0]["params"],
+            {"exchange": "SSE", "start_date": "20260501", "end_date": "20260531"},
+        )
+
+    def test_daily_snapshot_defaults_to_previous_trade_date(self) -> None:
+        class FixedDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):  # noqa: ANN001
+                return cls(2026, 6, 1)
+
+        calendar = [
+            {"cal_date": "20260531", "is_open": 0},
+            {"cal_date": "20260530", "is_open": 0},
+            {"cal_date": "20260529", "is_open": 1},
+        ]
+        caller = FakeCaller(calendar)
+        provider = make_provider(make_registry({"api_name": "trade_cal"}, {"api_name": "daily"}), caller=caller)
+
+        with patch("tushare_fastcli.provider.datetime", FixedDateTime):
+            provider.daily_snapshot()
+
+        self.assertEqual(caller.calls[0]["api_name"], "trade_cal")
+        self.assertEqual(caller.calls[1]["api_name"], "daily")
+        self.assertEqual(caller.calls[1]["params"], {"trade_date": "20260529"})
 
 
 if __name__ == "__main__":

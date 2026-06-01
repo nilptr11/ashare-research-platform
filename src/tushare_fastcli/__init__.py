@@ -17,12 +17,16 @@ from .recipes import (
     load_recipes,
 )
 from .registry import InterfaceEntry, InterfaceRegistry, load_registry
+from .schemas import ApiParameter, ApiSchema, SchemaError, get_api_schema, load_api_schemas
 
 __all__ = [
+    "ApiParameter",
+    "ApiSchema",
     "ApiRecipe",
     "InterfaceEntry",
     "InterfaceRegistry",
     "RecipeError",
+    "SchemaError",
     "TushareCallError",
     "TushareCaller",
     "TushareError",
@@ -33,7 +37,9 @@ __all__ = [
     "TushareUnknownInterfaceError",
     "default_fields",
     "default_recipe_params",
+    "get_api_schema",
     "get_recipe",
+    "load_api_schemas",
     "load_recipes",
     "load_registry",
 ]

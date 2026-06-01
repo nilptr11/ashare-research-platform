@@ -58,6 +58,14 @@ def _format_yyyymmdd(value: str | date | datetime) -> str:
     return text
 
 
+def _date_from_value(value: str | date | datetime) -> date:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return datetime.strptime(_format_yyyymmdd(value), "%Y%m%d").date()
+
+
 def _without_none(params: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in params.items() if value is not None}
 
@@ -227,15 +235,38 @@ class TushareProvider:
         lookback_days: int = 15,
         force: bool = False,
     ) -> str:
-        end = datetime.now().date() if as_of is None else as_of
-        end_text = _format_yyyymmdd(end)
-        if isinstance(end, str):
-            start_base = datetime.strptime(_format_yyyymmdd(end), "%Y%m%d").date()
-        elif isinstance(end, datetime):
-            start_base = end.date()
-        else:
-            start_base = end
-        start_text = (start_base - timedelta(days=lookback_days)).strftime("%Y%m%d")
+        end_date = datetime.now().date() if as_of is None else _date_from_value(as_of)
+        return self._last_open_trade_date(
+            end_date=end_date,
+            exchange=exchange,
+            lookback_days=lookback_days,
+            force=force,
+        )
+
+    def previous_trade_date(
+        self,
+        as_of: str | date | datetime | None = None,
+        exchange: str = "SSE",
+        lookback_days: int = 30,
+        force: bool = False,
+    ) -> str:
+        base_date = datetime.now().date() if as_of is None else _date_from_value(as_of)
+        return self._last_open_trade_date(
+            end_date=base_date - timedelta(days=1),
+            exchange=exchange,
+            lookback_days=lookback_days,
+            force=force,
+        )
+
+    def _last_open_trade_date(
+        self,
+        end_date: date,
+        exchange: str,
+        lookback_days: int,
+        force: bool,
+    ) -> str:
+        end_text = end_date.strftime("%Y%m%d")
+        start_text = (end_date - timedelta(days=lookback_days)).strftime("%Y%m%d")
 
         calendar = self.trade_cal(
             start_date=start_text,
@@ -260,7 +291,7 @@ class TushareProvider:
         fields: str = DAILY_FIELDS,
         force: bool = False,
     ) -> Any:
-        resolved_trade_date = _format_yyyymmdd(trade_date) if trade_date is not None else self.latest_trade_date(force=force)
+        resolved_trade_date = _format_yyyymmdd(trade_date) if trade_date is not None else self.previous_trade_date(force=force)
         return self.call("daily", params={"trade_date": resolved_trade_date}, fields=fields, force=force)
 
     def daily_basic_snapshot(
@@ -269,7 +300,7 @@ class TushareProvider:
         fields: str = DAILY_BASIC_FIELDS,
         force: bool = False,
     ) -> Any:
-        resolved_trade_date = _format_yyyymmdd(trade_date) if trade_date is not None else self.latest_trade_date(force=force)
+        resolved_trade_date = _format_yyyymmdd(trade_date) if trade_date is not None else self.previous_trade_date(force=force)
         return self.call("daily_basic", params={"trade_date": resolved_trade_date}, fields=fields, force=force)
 
     def adj_factor_snapshot(
@@ -278,7 +309,7 @@ class TushareProvider:
         fields: str = ADJ_FACTOR_FIELDS,
         force: bool = False,
     ) -> Any:
-        resolved_trade_date = _format_yyyymmdd(trade_date) if trade_date is not None else self.latest_trade_date(force=force)
+        resolved_trade_date = _format_yyyymmdd(trade_date) if trade_date is not None else self.previous_trade_date(force=force)
         return self.call("adj_factor", params={"trade_date": resolved_trade_date}, fields=fields, force=force)
 
     def limit_price_snapshot(
@@ -287,7 +318,7 @@ class TushareProvider:
         fields: str = STK_LIMIT_FIELDS,
         force: bool = False,
     ) -> Any:
-        resolved_trade_date = _format_yyyymmdd(trade_date) if trade_date is not None else self.latest_trade_date(force=force)
+        resolved_trade_date = _format_yyyymmdd(trade_date) if trade_date is not None else self.previous_trade_date(force=force)
         return self.call("stk_limit", params={"trade_date": resolved_trade_date}, fields=fields, force=force)
 
     def pro_bar(

@@ -24,4 +24,4 @@ tsfc = "tushare_fastcli.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-tushare_fastcli = ["interfaces.json", "api_defaults.json", "known_issues.json", "recipes.json"]
+tushare_fastcli = ["interfaces.json", "api_defaults.json", "api_schemas.json", "known_issues.json", "recipes.json"]

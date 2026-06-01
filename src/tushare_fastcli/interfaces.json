@@ -1,6 +1,6 @@
 {
   "source": "references/data-interfaces.md",
-  "count": 229,
+  "count": 220,
   "interfaces": [
     {
       "api_name": "rt_min",
@@ -1108,19 +1108,6 @@
       "permission_checked_at": "2026-05-29"
     },
     {
-      "api_name": "trade_cal",
-      "title": "交易日历",
-      "category": "期货数据",
-      "description": "获取各大期货交易所交易日历数据",
-      "doc_url": "https://tushare.pro/wctapi/documents/137.md",
-      "doc_id": "137",
-      "key": "trade_cal:137",
-      "eligibility": "unknown",
-      "required_points": null,
-      "permission_note": "",
-      "permission_checked_at": "2026-05-29"
-    },
-    {
       "api_name": "fut_daily",
       "title": "日线行情",
       "category": "期货数据",
@@ -1170,19 +1157,6 @@
       "eligibility": "points_ok",
       "required_points": 2000,
       "permission_note": "限量：单次最大返回1600行数据，可根据日期循环，总量不限制 积分：用户需要至少2000积分才可以调取，具体请参阅[积分获取办法](https://tushare.pro/document/1?doc_id=13)",
-      "permission_checked_at": "2026-05-29"
-    },
-    {
-      "api_name": "index_daily",
-      "title": "南华期货指数行情",
-      "category": "期货数据",
-      "description": "获取南华指数每日行情，指数行情也可以通过[通用行情接口](https://tushare.pro/document/2?doc_id=109)获取数据．",
-      "doc_url": "https://tushare.pro/wctapi/documents/155.md",
-      "doc_id": "155",
-      "key": "index_daily:155",
-      "eligibility": "unknown",
-      "required_points": null,
-      "permission_note": "",
       "permission_checked_at": "2026-05-29"
     },
     {
@@ -2850,19 +2824,6 @@
       "permission_checked_at": "2026-05-29"
     },
     {
-      "api_name": "film_record",
-      "title": "全国电影剧本备案数据",
-      "category": "行业经济,TMT行业",
-      "description": "获取全国电影剧本备案的公示数据",
-      "doc_url": "https://tushare.pro/wctapi/documents/156.md",
-      "doc_id": "156",
-      "key": "film_record:156",
-      "eligibility": "points_ok",
-      "required_points": 120,
-      "permission_note": "限量：单次最大500，总量不限制 数据权限：用户需要至少120积分才可以调取，积分越多调取频次越高，具体请参阅[积分获取办法](https://tushare.pro/document/1?doc_id=13)",
-      "permission_checked_at": "2026-05-29"
-    },
-    {
       "api_name": "teleplay_record",
       "title": "全国电视剧备案公示数据",
       "category": "行业经济,TMT行业",
@@ -2873,84 +2834,6 @@
       "eligibility": "unknown",
       "required_points": null,
       "permission_note": "限量：单次最大1000，总量不限制 数据权限：用户需要至少积分600才可以调取，积分越多调取频次越高，具体请参阅[积分获取办法](https://tushare.pro/document/1?doc_id=13)",
-      "permission_checked_at": "2026-05-29"
-    },
-    {
-      "api_name": "tmt_twincomedetail",
-      "title": "台湾电子产业月营收明细",
-      "category": "行业经济,TMT行业",
-      "description": "获取台湾TMT行业上市公司各类产品月度营收情况。",
-      "doc_url": "https://tushare.pro/wctapi/documents/87.md",
-      "doc_id": "87",
-      "key": "tmt_twincomedetail:87",
-      "eligibility": "unknown",
-      "required_points": null,
-      "permission_note": "",
-      "permission_checked_at": "2026-05-29"
-    },
-    {
-      "api_name": "tmt_twincome",
-      "title": "台湾电子产业月营收",
-      "category": "行业经济,TMT行业",
-      "description": "获取台湾TMT电子产业领域各类产品月度营收数据。",
-      "doc_url": "https://tushare.pro/wctapi/documents/88.md",
-      "doc_id": "88",
-      "key": "tmt_twincome:88",
-      "eligibility": "unknown",
-      "required_points": null,
-      "permission_note": "",
-      "permission_checked_at": "2026-05-29"
-    },
-    {
-      "api_name": "bo_monthly",
-      "title": "电影月度票房",
-      "category": "行业经济,TMT行业",
-      "description": "获取电影月度票房数据",
-      "doc_url": "https://tushare.pro/wctapi/documents/113.md",
-      "doc_id": "113",
-      "key": "bo_monthly:113",
-      "eligibility": "points_ok",
-      "required_points": 500,
-      "permission_note": "权限：用户需要至少500积分才可以调取，具体请参阅[积分获取办法](https://tushare.pro/document/1?doc_id=13)",
-      "permission_checked_at": "2026-05-29"
-    },
-    {
-      "api_name": "bo_daily",
-      "title": "电影日度票房",
-      "category": "行业经济,TMT行业",
-      "description": "获取电影日度票房",
-      "doc_url": "https://tushare.pro/wctapi/documents/115.md",
-      "doc_id": "115",
-      "key": "bo_daily:115",
-      "eligibility": "points_ok",
-      "required_points": 500,
-      "permission_note": "权限：用户需要至少500积分才可以调取，具体请参阅[积分获取办法](https://tushare.pro/document/1?doc_id=13)",
-      "permission_checked_at": "2026-05-29"
-    },
-    {
-      "api_name": "bo_cinema",
-      "title": "影院日度票房",
-      "category": "行业经济,TMT行业",
-      "description": "获取每日各影院的票房数据",
-      "doc_url": "https://tushare.pro/wctapi/documents/116.md",
-      "doc_id": "116",
-      "key": "bo_cinema:116",
-      "eligibility": "points_ok",
-      "required_points": 500,
-      "permission_note": "权限：用户需要至少500积分才可以调取，具体请参阅[积分获取办法](https://tushare.pro/document/1?doc_id=13)",
-      "permission_checked_at": "2026-05-29"
-    },
-    {
-      "api_name": "bo_weekly",
-      "title": "电影周度票房",
-      "category": "行业经济,TMT行业",
-      "description": "获取周度票房数据",
-      "doc_url": "https://tushare.pro/wctapi/documents/114.md",
-      "doc_id": "114",
-      "key": "bo_weekly:114",
-      "eligibility": "points_ok",
-      "required_points": 500,
-      "permission_note": "权限：用户需要至少500积分才可以调取，具体请参阅[积分获取办法](https://tushare.pro/document/1?doc_id=13)",
       "permission_checked_at": "2026-05-29"
     },
     {

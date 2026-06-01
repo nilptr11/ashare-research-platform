@@ -56,6 +56,8 @@ tsfc info pro_bar --doc-id 109
 tsfc info cyq_chips
 tsfc defaults daily
 tsfc defaults rt_min --doc-id 416
+tsfc schema daily
+tsfc schema pro_bar --doc-id 109
 ```
 
 调用接口并输出 JSON：
@@ -118,6 +120,14 @@ python3 scripts/generate_interfaces.py \
   --output src/tushare_fastcli/interfaces.json
 ```
 
+更新官方文档入参 schema：
+
+```bash
+uv run python scripts/fetch_api_schemas.py \
+  --output src/tushare_fastcli/api_schemas.json \
+  --output-dir reports
+```
+
 ## 测试
 
 ```bash
@@ -163,11 +173,14 @@ from tushare_fastcli import TushareProvider
 provider = TushareProvider()
 
 trade_date = provider.latest_trade_date()
+completed_trade_date = provider.previous_trade_date()
 stocks = provider.stock_basic()
-quotes = provider.daily_snapshot(trade_date)
-metrics = provider.daily_basic_snapshot(trade_date)
-limits = provider.limit_price_snapshot(trade_date)
+quotes = provider.daily_snapshot(completed_trade_date)
+metrics = provider.daily_basic_snapshot(completed_trade_date)
+limits = provider.limit_price_snapshot(completed_trade_date)
 ```
+
+`latest_trade_date()` 表示截至 `as_of` 的最近开市日，可能包含当天；`previous_trade_date()` 表示 `as_of` 之前的上一个已完成交易日。选股扫描器和盘中自动化默认应使用 `previous_trade_date()`。
 
 常用接口的默认字段、默认参数、主键、日期字段等元数据维护在 `recipes.json`，可供上层数据仓库或扫描器读取：
 
@@ -177,6 +190,16 @@ from tushare_fastcli import get_recipe
 daily_recipe = get_recipe("daily")
 print(daily_recipe.primary_key)
 print(daily_recipe.fields)
+```
+
+官方文档里的输入参数表维护在 `api_schemas.json`，可用于上层仓库做参数校验、工具描述或 skill 生成：
+
+```python
+from tushare_fastcli import get_api_schema
+
+daily_schema = get_api_schema("daily")
+print(daily_schema.optional_params)
+print(daily_schema.example_params)
 ```
 
 上层仓库需要调用任意原始接口时，也走同一个 Provider：

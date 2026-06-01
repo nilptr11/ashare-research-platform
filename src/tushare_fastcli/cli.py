@@ -17,6 +17,7 @@ from .provider import (
     TushareUnknownInterfaceError,
 )
 from .registry import InterfaceEntry, load_registry
+from .schemas import SchemaError, get_api_schema
 
 
 OUTPUT_FORMATS = ["table", "json", "jsonl", "csv"]
@@ -44,6 +45,12 @@ def build_parser() -> argparse.ArgumentParser:
     defaults_parser.add_argument("api_name")
     defaults_parser.add_argument("--doc-id", help="同名接口较多时，用 doc_id 精确定位")
     defaults_parser.add_argument("--key", help="同名接口较多时，用 api:doc_id key 精确定位")
+
+    schema_parser = subparsers.add_parser("schema", help="查看官方文档入参 schema")
+    schema_parser.add_argument("api_name")
+    schema_parser.add_argument("--doc-id", help="同名接口较多时，用 doc_id 精确定位")
+    schema_parser.add_argument("--key", help="同名接口较多时，用 api:doc_id key 精确定位")
+    schema_parser.add_argument("--format", choices=["text", "json"], default="text")
 
     info_parser = subparsers.add_parser("info", help="查看接口元数据和文档链接")
     info_parser.add_argument("api_name")
@@ -199,6 +206,66 @@ def _handle_defaults(args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_schema(args: argparse.Namespace) -> int:
+    try:
+        schema = get_api_schema(args.api_name, doc_id=args.doc_id, key=args.key)
+    except SchemaError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.format == "json":
+        print(
+            json.dumps(
+                {
+                    "key": schema.key,
+                    "api_name": schema.api_name,
+                    "doc_id": schema.doc_id,
+                    "title": schema.title,
+                    "fetch_status": schema.fetch_status,
+                    "parse_status": schema.parse_status,
+                    "required_params": schema.required_params,
+                    "optional_params": schema.optional_params,
+                    "input_params": [param.__dict__ for param in schema.input_params],
+                    "example_params": schema.example_params,
+                    "default_params": schema.default_params,
+                    "default_params_source": schema.default_params_source,
+                    "doc_url": schema.doc_url,
+                    "error_message": schema.error_message,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
+
+    print(f"接口：{schema.api_name}:{schema.doc_id}")
+    print(f"标题：{schema.title}")
+    print(f"状态：fetch={schema.fetch_status}, parse={schema.parse_status}")
+    print(f"文档：{schema.doc_url}")
+    if schema.input_params:
+        rows = [
+            {
+                "name": param.name,
+                "type": param.type,
+                "required": param.required,
+                "description": param.description,
+            }
+            for param in schema.input_params
+        ]
+        _print_table(rows, ["name", "type", "required", "description"])
+    else:
+        print("入参：无结构化参数")
+    if schema.example_params:
+        print("官方示例参数：")
+        print(json.dumps(schema.example_params, ensure_ascii=False, indent=2))
+    if schema.default_params:
+        print("默认测试参数：")
+        print(json.dumps(schema.default_params, ensure_ascii=False, indent=2))
+    if schema.error_message:
+        print(f"错误：{schema.error_message}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -207,6 +274,7 @@ def main(argv: list[str] | None = None) -> int:
         "list": _handle_list,
         "categories": _handle_categories,
         "defaults": _handle_defaults,
+        "schema": _handle_schema,
         "info": _handle_info,
         "call": _handle_call,
     }

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class RegistryTest(unittest.TestCase):
     def test_parse_markdown_keeps_all_interface_rows(self) -> None:
         interfaces = parse_markdown(ROOT / "references" / "data-interfaces.md")
-        self.assertEqual(len(interfaces), 229)
+        self.assertEqual(len(interfaces), 220)
         self.assertEqual(interfaces[0]["api_name"], "rt_min")
         self.assertEqual(interfaces[-1]["api_name"], "fund_sales_vol")
 

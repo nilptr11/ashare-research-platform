@@ -7,38 +7,6 @@
       "detail": "2026-05-31 smoke 实测返回 not authorized for premium api 'anns_d'。这类错误需要 Tushare 账号侧开通权限，不能通过本地参数修复。"
     }
   ],
-  "bo_cinema": [
-    {
-      "scope": "runtime-api-name",
-      "status": "open",
-      "summary": "Tushare 运行时返回接口名不正确",
-      "detail": "2026-05-31 smoke 中，部分票房/TMT 文档索引接口会返回“请指定正确的接口名”。需要后续核对 Tushare 当前 SDK/代理是否仍支持该接口名。"
-    }
-  ],
-  "bo_daily": [
-    {
-      "scope": "runtime-api-name",
-      "status": "open",
-      "summary": "Tushare 运行时返回接口名不正确",
-      "detail": "2026-05-31 smoke 中，部分票房/TMT 文档索引接口会返回“请指定正确的接口名”。需要后续核对 Tushare 当前 SDK/代理是否仍支持该接口名。"
-    }
-  ],
-  "bo_monthly": [
-    {
-      "scope": "runtime-api-name",
-      "status": "open",
-      "summary": "Tushare 运行时返回接口名不正确",
-      "detail": "2026-05-31 smoke 中，部分票房/TMT 文档索引接口会返回“请指定正确的接口名”。需要后续核对 Tushare 当前 SDK/代理是否仍支持该接口名。"
-    }
-  ],
-  "bo_weekly": [
-    {
-      "scope": "runtime-api-name",
-      "status": "open",
-      "summary": "Tushare 运行时返回接口名不正确",
-      "detail": "2026-05-31 smoke 中，部分票房/TMT 文档索引接口会返回“请指定正确的接口名”。需要后续核对 Tushare 当前 SDK/代理是否仍支持该接口名。"
-    }
-  ],
   "cctv_news": [
     {
       "scope": "runtime-permission",
@@ -55,12 +23,20 @@
       "detail": "2026-05-29 实测通过 SDK 和原始 HTTP payload 均传入 ts_code 后，代理仍返回“必填参数, ts_code”。这更像代理端参数转发或校验问题，不应归因于本地 CLI 或积分权限。"
     }
   ],
-  "film_record": [
+  "hk_daily_adj": [
     {
-      "scope": "runtime-api-name",
+      "scope": "proxy-timeout",
       "status": "open",
-      "summary": "Tushare 运行时返回接口名不正确",
-      "detail": "2026-05-31 smoke 中，部分票房/TMT 文档索引接口会返回“请指定正确的接口名”。需要后续核对 Tushare 当前 SDK/代理是否仍支持该接口名。"
+      "summary": "官方样例参数在代理侧超时或返回空表",
+      "detail": "2026-06-01 核对 Tushare 官方文档 doc_id=339，示例参数包含 ts_code/start_date/end_date 或 trade_date；代理运行官方样例时多次 ReadTimeout，部分港股代码单日返回空表。"
+    }
+  ],
+  "hk_mins": [
+    {
+      "scope": "proxy-timeout",
+      "status": "open",
+      "summary": "官方样例参数在代理侧超时",
+      "detail": "2026-06-01 核对 Tushare 官方文档 doc_id=304，示例参数为 ts_code=00001.HK,freq=1min,start_date,end_date；代理运行时 ReadTimeout。"
     }
   ],
   "major_news": [
@@ -79,6 +55,14 @@
       "detail": "2026-05-31 smoke 实测返回 not authorized for premium api 'rt_idx_min'。这类错误需要 Tushare 账号侧开通权限，不能通过本地参数修复。"
     }
   ],
+  "rt_idx_k": [
+    {
+      "scope": "runtime-empty-realtime",
+      "status": "open",
+      "summary": "官方实时指数 K 线样例在当前时段返回空表",
+      "detail": "2026-06-01 核对 Tushare 官方文档 doc_id=403，示例参数 ts_code=000001.SH；代理运行时返回空 DataFrame，可能与实时接口市场时段或上游可用性有关。"
+    }
+  ],
   "rt_k": [
     {
       "scope": "runtime-permission",
@@ -95,20 +79,12 @@
       "detail": "2026-05-31 smoke 实测返回 not authorized for premium api 'stk_mins'。分钟线类接口通常需要单独权限，不能通过本地参数修复。"
     }
   ],
-  "tmt_twincome": [
+  "us_daily_adj": [
     {
-      "scope": "runtime-api-name",
+      "scope": "proxy-timeout",
       "status": "open",
-      "summary": "Tushare 运行时返回接口名不正确",
-      "detail": "2026-05-31 smoke 中，部分票房/TMT 文档索引接口会返回“请指定正确的接口名”。需要后续核对 Tushare 当前 SDK/代理是否仍支持该接口名。"
-    }
-  ],
-  "tmt_twincomedetail": [
-    {
-      "scope": "runtime-api-name",
-      "status": "open",
-      "summary": "Tushare 运行时返回接口名不正确",
-      "detail": "2026-05-31 smoke 中，部分票房/TMT 文档索引接口会返回“请指定正确的接口名”。需要后续核对 Tushare 当前 SDK/代理是否仍支持该接口名。"
+      "summary": "官方样例参数在代理侧超时或返回空表",
+      "detail": "2026-06-01 核对 Tushare 官方文档 doc_id=338，示例参数包含 ts_code/start_date/end_date 或 trade_date；代理运行 AAPL/NVDA 单日样例时多次 ReadTimeout，trade_date 查询返回空表。"
     }
   ]
 }
