@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 import sys
 from pathlib import Path
@@ -8,6 +10,26 @@ from typing import Any
 
 def _is_dataframe(value: Any) -> bool:
     return all(hasattr(value, attr) for attr in ["to_dict", "to_json", "to_csv", "to_string"])
+
+
+def _is_records(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(item, dict) for item in value)
+
+
+def _records_to_csv(records: list[dict[str, Any]]) -> str:
+    columns: list[str] = []
+    for record in records:
+        for key in record:
+            if key not in columns:
+                columns.append(key)
+    if not columns:
+        return ""
+
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=columns)
+    writer.writeheader()
+    writer.writerows(records)
+    return buffer.getvalue()
 
 
 def limit_rows(value: Any, max_rows: int | None) -> Any:
@@ -32,6 +54,8 @@ def render(value: Any, output_format: str) -> str:
 
     if output_format == "jsonl" and isinstance(value, list):
         return "\n".join(json.dumps(item, ensure_ascii=False, default=str) for item in value)
+    if output_format == "csv" and _is_records(value):
+        return _records_to_csv(value)
     if output_format == "csv":
         raise ValueError("CSV 输出要求 Tushare 返回 DataFrame")
     if output_format == "table":
@@ -46,4 +70,3 @@ def emit(text: str, output: str | Path | None = None) -> None:
     sys.stdout.write(text)
     if text and not text.endswith("\n"):
         sys.stdout.write("\n")
-

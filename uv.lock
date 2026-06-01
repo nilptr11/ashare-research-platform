@@ -313,12 +313,14 @@ name = "tushare-fastcli"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "beautifulsoup4" },
     { name = "pandas" },
     { name = "tushare" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "beautifulsoup4", specifier = ">=4.12" },
     { name = "pandas", specifier = ">=1.5" },
     { name = "tushare", specifier = ">=1.4.21" },
 ]

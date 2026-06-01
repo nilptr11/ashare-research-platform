@@ -240,6 +240,28 @@ class ProviderTest(unittest.TestCase):
         self.assertEqual(caller.calls[1]["api_name"], "daily")
         self.assertEqual(caller.calls[1]["params"], {"trade_date": "20260529"})
 
+    def test_news_fallback_delegates_to_page_crawler(self) -> None:
+        provider = make_provider(make_registry({"api_name": "news"}))
+        payload = {
+            "sources": [],
+            "records": [{"src": "sina", "content": "a"}, {"src": "cls", "content": "b"}],
+        }
+
+        with patch("tushare_fastcli.news.load_tushare_cookie", return_value="uid=1; username=u") as load_cookie:
+            with patch("tushare_fastcli.news.crawl_tushare_news", return_value=payload) as crawl:
+                records = provider.news_fallback(sources=["sina", "cls"], max_rows=1)
+
+        load_cookie.assert_called_once()
+        crawl.assert_called_once_with(
+            cookie="uid=1; username=u",
+            sources=["sina", "cls"],
+            timeout=30.0,
+            delay=0.3,
+            retries=2,
+            publish_date=None,
+        )
+        self.assertEqual(records, [{"src": "sina", "content": "a"}])
+
 
 if __name__ == "__main__":
     unittest.main()

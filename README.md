@@ -26,9 +26,11 @@ TUSHARE_TOKEN=your_tushare_token_here
 TUSHARE_PROXY_URL=https://your-tushare-proxy.example.com
 TUSHARE_POINTS=15000
 TUSHARE_ALLOW_SEPARATE_PERMISSION=false
+TUSHARE_COOKIE=uid=...; username=...
 ```
 
 配置优先级是：CLI 参数 > 系统环境变量 > `.env`。`TUSHARE_PROXY_URL` 留空时使用 Tushare SDK 默认地址。`TUSHARE_POINTS` 用于本地调用前权限判断，`TUSHARE_ALLOW_SEPARATE_PERMISSION=false` 时需要 `--force` 才会调用需单独权限的接口。
+`TUSHARE_COOKIE` 只用于 `tsfc news` 抓取 Tushare 资讯网页，不会写入输出文件。
 
 ## 常用命令
 
@@ -97,6 +99,18 @@ tsfc call stock_basic \
   --format csv \
   --output stock_basic.csv
 ```
+
+当账号没有 `news` 接口单独权限时，可以抓取登录后可见的 Tushare 资讯页作为当前快讯替代源。输出默认是扁平 records，字段包含 `id/content_hash/dedupe_key/src/source_name/channel/time/datetime/title/content/body/fetched_at/source_kind`，便于 JSONL 或 CSV 入库：
+
+```bash
+tsfc news --source sina --source cls --format jsonl --output tushare-news.jsonl
+tsfc news --all --format csv --output tushare-news.csv
+tsfc news --source eastmoney --publish-date 2026-06-01 --retries 3 --include-summary --format json
+```
+
+`--publish-date` 只在你确认页面条目属于同一天时使用，用来把 `HH:MM` 补齐为 `datetime`；不传时保留 `time`，`datetime` 为 `null`。该替代源面向“当前可见快讯页”，不能替代 `news` API 的历史时间范围查询。
+默认来源按当前 Tushare 资讯页导航抓取：`xq`、`jinshi`、`jinrongjie`、`10jqka`、`yicai`、`cls`、`eastmoney`、`wallstreetcn`、`sina`。
+`content_hash` 基于标准化后的标题和正文生成，适合跨来源精确去重；`dedupe_key` 基于 `src + channel + time + content_hash` 生成，适合同源快讯幂等 upsert。
 
 JSON 参数适合大模型工具调用：
 
@@ -215,6 +229,12 @@ df = provider.call(
 )
 ```
 
+账号缺少 `news` 单独权限时，上层也可以显式走网页替代源：
+
+```python
+records = provider.news_fallback(sources=["sina", "cls"], max_rows=100)
+```
+
 同名接口存在多份文档元数据时，Python API 也可以指定 `doc_id` 或 `key`：
 
 ```python
@@ -248,4 +268,5 @@ ts_client.DataApi._DataApi__http_url = "https://your-tushare-proxy.example.com"
 
 ## 说明
 
-本项目不会绕过 Tushare 的 token、积分和接口权限限制。若某接口在账号侧没有权限，CLI 会直接返回 Tushare SDK 的错误信息。
+常规 `call` 不会绕过 Tushare 的 token、积分和接口权限限制。若某接口在账号侧没有权限，CLI 会直接返回 Tushare SDK 的错误信息。
+`news` 命令是显式的网页替代源：它需要有效的 Tushare 登录 Cookie，只解析登录后资讯页当前可见内容，并输出清洗后的结构化记录。

@@ -103,6 +103,7 @@ class TushareProvider:
         caller: TushareCaller | None = None,
         registry: InterfaceRegistry | None = None,
     ) -> None:
+        self._env_file = env_file
         self._config = load_config(
             token=token,
             proxy_url=proxy_url,
@@ -347,3 +348,37 @@ class TushareProvider:
             fields=fields,
             force=force,
         )
+
+    def news_fallback(
+        self,
+        sources: list[str] | tuple[str, ...] | None = None,
+        cookie: str | None = None,
+        cookie_file: str | None = None,
+        cookie_env: str = "TUSHARE_COOKIE",
+        timeout: float = 30.0,
+        delay: float = 0.3,
+        retries: int = 2,
+        publish_date: str | None = None,
+        max_rows: int = 0,
+        include_summary: bool = False,
+    ) -> Any:
+        from .news import crawl_tushare_news, load_tushare_cookie
+
+        resolved_cookie = load_tushare_cookie(
+            cookie=cookie,
+            cookie_file=cookie_file,
+            cookie_env=cookie_env,
+            env_file=self._env_file,
+        )
+        payload = crawl_tushare_news(
+            cookie=resolved_cookie,
+            sources=sources,
+            timeout=timeout,
+            delay=delay,
+            retries=retries,
+            publish_date=publish_date,
+        )
+        if max_rows > 0:
+            payload = dict(payload)
+            payload["records"] = payload["records"][:max_rows]
+        return payload if include_summary else payload["records"]

@@ -8,6 +8,13 @@ from typing import Any
 
 from .defaults import default_params
 from .issues import known_issues
+from .news import (
+    DEFAULT_NEWS_SOURCES,
+    TushareNewsError,
+    crawl_tushare_news,
+    load_tushare_cookie,
+    normalize_news_sources,
+)
 from .output import emit, limit_rows, render
 from .params import merge_params
 from .provider import (
@@ -74,6 +81,22 @@ def build_parser() -> argparse.ArgumentParser:
     call_parser.add_argument("--max-rows", type=int, default=0, help="只输出前 N 行，0 表示不限制")
     call_parser.add_argument("--format", choices=OUTPUT_FORMATS, default="table")
     call_parser.add_argument("--output", help="输出文件路径；不传则写入 stdout")
+
+    news_parser = subparsers.add_parser("news", help="抓取 Tushare 资讯页面，作为 news 接口权限不足时的替代源")
+    news_parser.add_argument("--all", action="store_true", help="抓取全部已知来源；未指定 --source 时默认全部")
+    news_parser.add_argument("--source", action="append", choices=DEFAULT_NEWS_SOURCES, help="资讯来源 slug，可重复传入")
+    news_parser.add_argument("--cookie", help="Tushare 登录 Cookie；默认读取 TUSHARE_COOKIE")
+    news_parser.add_argument("--cookie-file", help="从文件读取 Tushare 登录 Cookie")
+    news_parser.add_argument("--cookie-env", default="TUSHARE_COOKIE", help="读取 Cookie 的环境变量名")
+    news_parser.add_argument("--env-file", default=".env", help="配置文件路径，默认读取当前目录 .env")
+    news_parser.add_argument("--timeout", type=float, default=30.0, help="单来源请求超时时间，秒")
+    news_parser.add_argument("--delay", type=float, default=0.3, help="来源之间的间隔，秒")
+    news_parser.add_argument("--retries", type=int, default=2, help="单来源失败重试次数，默认 2")
+    news_parser.add_argument("--publish-date", help="可选：用 YYYY-MM-DD 补齐 records.datetime")
+    news_parser.add_argument("--max-rows", type=int, default=0, help="只输出前 N 条记录，0 表示不限制")
+    news_parser.add_argument("--include-summary", action="store_true", help="输出包含来源统计和 records 的 JSON 对象")
+    news_parser.add_argument("--format", choices=OUTPUT_FORMATS, default="json")
+    news_parser.add_argument("--output", help="输出文件路径；不传则写入 stdout")
 
     return parser
 
@@ -201,6 +224,42 @@ def _handle_call(args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_news(args: argparse.Namespace) -> int:
+    try:
+        if args.include_summary and args.format != "json":
+            raise TushareNewsError("--include-summary 只能配合 --format json")
+
+        cookie = load_tushare_cookie(
+            cookie=args.cookie,
+            cookie_file=args.cookie_file,
+            cookie_env=args.cookie_env,
+            env_file=args.env_file,
+        )
+        sources = DEFAULT_NEWS_SOURCES if args.all else normalize_news_sources(args.source)
+        payload = crawl_tushare_news(
+            cookie=cookie,
+            sources=sources,
+            timeout=args.timeout,
+            delay=args.delay,
+            retries=args.retries,
+            publish_date=args.publish_date,
+        )
+        records = limit_rows(payload["records"], args.max_rows)
+        if args.include_summary:
+            payload = dict(payload)
+            payload["records"] = records
+            emit(json.dumps(payload, ensure_ascii=False, default=str, indent=2), args.output)
+        else:
+            emit(render(records, args.format), args.output)
+    except TushareNewsError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:  # noqa: BLE001
+        print(str(exc), file=sys.stderr)
+        return 1
+    return 0
+
+
 def _handle_defaults(args: argparse.Namespace) -> int:
     print(json.dumps(default_params(args.api_name, doc_id=args.doc_id, key=args.key), ensure_ascii=False, indent=2))
     return 0
@@ -277,5 +336,6 @@ def main(argv: list[str] | None = None) -> int:
         "schema": _handle_schema,
         "info": _handle_info,
         "call": _handle_call,
+        "news": _handle_news,
     }
     return handlers[args.command](args)
