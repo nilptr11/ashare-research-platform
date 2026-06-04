@@ -30,7 +30,7 @@ TUSHARE_COOKIE=uid=...; username=...
 ```
 
 配置优先级是：CLI 参数 > 系统环境变量 > `.env`。`TUSHARE_PROXY_URL` 留空时使用 Tushare SDK 默认地址。`TUSHARE_POINTS` 用于本地调用前权限判断，`TUSHARE_ALLOW_SEPARATE_PERMISSION=false` 时需要 `--force` 才会调用需单独权限的接口。
-`TUSHARE_COOKIE` 只用于 `tsfc news` 抓取 Tushare 资讯网页，不会写入输出文件。
+`TUSHARE_COOKIE` 只用于 `tsfc events news` 抓取 Tushare 资讯网页，不会写入输出文件。
 
 ## 常用命令
 
@@ -106,24 +106,20 @@ tsfc call stock_basic \
 
 ```bash
 tsfc events notice --days 3 --max-rows 20 --format table
-tsfc events notice --stock 000001 --category 财务报告 --keyword 分红 --format jsonl
-tsfc events forecast --days 60 --period 20260331 --max-rows 20 --format csv
+tsfc events notice --stock 000001 --category 财务报告 --keyword 分红 --format jsonl --output notice.jsonl
+tsfc events forecast --days 60 --period 20260331 --max-rows 20 --format csv --output forecast.csv
 tsfc events news --source sina --source cls --format jsonl --output tushare-news.jsonl
 ```
 
+CLI 只负责按调用参数输出本次结果，`--output` 写入指定文件；不传则输出到 stdout。
+
 公告标准 records 字段包含 `id/content_hash/dedupe_key/event_type/source_kind/stock_code/stock_name/title/notice_type/publish_date/url/fetched_at/raw`。业绩预告标准 records 字段包含 `id/content_hash/dedupe_key/event_type/source_kind/period/stock_code/stock_name/metric/forecast_type/change_range/publish_date/change_summary/change_reason/fetched_at/raw`。
 
-`events news` 输出沿用时讯 records：`id/content_hash/dedupe_key/src/source_name/channel/time/datetime/title/content/body/fetched_at/source_kind`，便于 JSONL 或 CSV 入库。兼容入口 `tsfc news` 仍可使用：
+`events news` 输出沿用时讯 records：`id/content_hash/dedupe_key/src/source_name/channel/date/time/datetime/date_source/title/content/body/fetched_at/source_kind`，便于 JSONL 或 CSV 入库。顶层 `tsfc news` 兼容入口已移除，统一使用 `tsfc events news`。
 
-```bash
-tsfc news --source sina --source cls --format jsonl --output tushare-news.jsonl
-tsfc news --all --format csv --output tushare-news.csv
-tsfc news --source eastmoney --publish-date 2026-06-01 --retries 3 --include-summary --format json
-```
-
-`--publish-date` 只在你确认页面条目属于同一天时使用，用来把 `HH:MM` 补齐为 `datetime`；不传时保留 `time`，`datetime` 为 `null`。该替代源面向“当前可见快讯页”，不能替代 `news` API 的历史时间范围查询。
+`--publish-date` 只在你确认页面条目属于同一天时使用，用来覆盖自动日期补全；默认会基于当前日期或 `--anchor-date`，结合页面里的日期分隔符，把 `HH:MM` 补齐为 `date/datetime`。该替代源面向“当前可见快讯页”，不能替代 `news` API 的历史时间范围查询。
 默认来源按当前 Tushare 资讯页导航抓取：`xq`、`jinshi`、`jinrongjie`、`10jqka`、`yicai`、`cls`、`eastmoney`、`wallstreetcn`、`sina`。
-`content_hash` 基于标准化后的标题和正文生成，适合跨来源精确去重；`dedupe_key` 基于 `src + channel + time + content_hash` 生成，适合同源快讯幂等 upsert。
+`content_hash` 基于标准化后的标题和正文生成，适合跨来源精确去重；`dedupe_key` 基于 `src + channel + datetime/time + content_hash` 生成，适合同源快讯幂等 upsert。
 
 JSON 参数适合大模型工具调用：
 
@@ -242,10 +238,10 @@ df = provider.call(
 )
 ```
 
-账号缺少 `news` 单独权限时，上层也可以显式走网页替代源：
+账号缺少 `news` 单独权限时，上层也统一走事件时讯网页替代源：
 
 ```python
-records = provider.news_fallback(sources=["sina", "cls"], max_rows=100)
+records = provider.event_news(sources=["sina", "cls"], max_rows=100)
 ```
 
 同名接口存在多份文档元数据时，Python API 也可以指定 `doc_id` 或 `key`：

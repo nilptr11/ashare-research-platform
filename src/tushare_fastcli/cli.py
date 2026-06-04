@@ -107,9 +107,6 @@ def build_parser() -> argparse.ArgumentParser:
         news_parser.add_argument("--format", choices=OUTPUT_FORMATS, default="json")
         news_parser.add_argument("--output", help="输出文件路径；不传则写入 stdout")
 
-    news_parser = subparsers.add_parser("news", help="抓取 Tushare 资讯页面，作为 events news 的兼容入口")
-    add_news_arguments(news_parser)
-
     events_parser = subparsers.add_parser("events", help="A 股事件能力：公告、业绩预告、时讯")
     event_subparsers = events_parser.add_subparsers(dest="event_type", required=True)
 
@@ -466,7 +463,6 @@ def main(argv: list[str] | None = None) -> int:
         "schema": _handle_schema,
         "info": _handle_info,
         "call": _handle_call,
-        "news": _handle_news,
         "events": _handle_events,
     }
     return handlers[args.command](args)

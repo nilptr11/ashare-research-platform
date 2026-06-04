@@ -281,15 +281,6 @@ class ProviderTest(unittest.TestCase):
 
     def test_event_news_delegates_to_page_crawler(self) -> None:
         provider = make_provider(make_registry({"api_name": "news"}))
-
-        with patch.object(provider, "news_fallback", return_value=[{"event_type": "news"}]) as fallback:
-            records = provider.event_news(sources=["cls"], max_rows=1)
-
-        fallback.assert_called_once()
-        self.assertEqual(records, [{"event_type": "news"}])
-
-    def test_news_fallback_delegates_to_page_crawler(self) -> None:
-        provider = make_provider(make_registry({"api_name": "news"}))
         payload = {
             "sources": [],
             "records": [{"src": "sina", "content": "a"}, {"src": "cls", "content": "b"}],
@@ -297,7 +288,7 @@ class ProviderTest(unittest.TestCase):
 
         with patch("tushare_fastcli.news.load_tushare_cookie", return_value="uid=1; username=u") as load_cookie:
             with patch("tushare_fastcli.news.crawl_tushare_news", return_value=payload) as crawl:
-                records = provider.news_fallback(sources=["sina", "cls"], max_rows=1)
+                records = provider.event_news(sources=["sina", "cls"], anchor_date="20260603", max_rows=1)
 
         load_cookie.assert_called_once()
         crawl.assert_called_once_with(
@@ -307,6 +298,7 @@ class ProviderTest(unittest.TestCase):
             delay=0.3,
             retries=2,
             publish_date=None,
+            anchor_date="20260603",
         )
         self.assertEqual(records, [{"src": "sina", "content": "a"}])
 

@@ -267,7 +267,6 @@ def parse_news_page(html: str, slug: str, anchor_date: str | date | datetime | N
                         "time": publish_time,
                         "datetime": _combine_date_time(current_date, publish_time),
                         "date_source": current_date_source,
-                        "date_confidence": "high" if current_date_source == "page_day_marker" else "medium",
                         "content": content,
                         "position": len(items) + 1,
                     }
@@ -332,15 +331,14 @@ def _content_hash(title: str, body: str, content: str) -> str:
     return _hash_parts(_normalize_hash_text(content))
 
 
-def _explicit_date_fields(publish_date: str | None, publish_time: str) -> tuple[str | None, str | None, str | None, str]:
+def _explicit_date_fields(publish_date: str | None, publish_time: str) -> tuple[str | None, str | None, str | None]:
     if publish_date is None:
-        return None, None, None, ""
+        return None, None, None
     explicit_date = _parse_date(publish_date)
     return (
         explicit_date.isoformat(),
         _combine_date_time(explicit_date, publish_time),
         "explicit_publish_date",
-        "high",
     )
 
 
@@ -359,11 +357,10 @@ def build_news_records(
                 title, body = _extract_title_body(content)
                 publish_time = str(item.get("time", "")).strip()
                 content_hash = _content_hash(title, body, content)
-                explicit_date, explicit_datetime, explicit_source, explicit_confidence = _explicit_date_fields(publish_date, publish_time)
+                explicit_date, explicit_datetime, explicit_source = _explicit_date_fields(publish_date, publish_time)
                 item_date = explicit_date or item.get("date")
                 item_datetime = explicit_datetime or item.get("datetime")
                 date_source = explicit_source or item.get("date_source")
-                date_confidence = explicit_confidence or item.get("date_confidence")
                 record = {
                     "id": _hash_parts(page["slug"], channel["name"], item_datetime or publish_time, content),
                     "content_hash": content_hash,
@@ -377,7 +374,6 @@ def build_news_records(
                     "time": publish_time,
                     "datetime": item_datetime,
                     "date_source": date_source,
-                    "date_confidence": date_confidence,
                     "title": title,
                     "content": content,
                     "body": body,

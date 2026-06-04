@@ -417,32 +417,7 @@ class TushareProvider:
         delay: float = 0.3,
         retries: int = 2,
         publish_date: str | None = None,
-        max_rows: int = 0,
-        include_summary: bool = False,
-    ) -> Any:
-        return self.news_fallback(
-            sources=sources,
-            cookie=cookie,
-            cookie_file=cookie_file,
-            cookie_env=cookie_env,
-            timeout=timeout,
-            delay=delay,
-            retries=retries,
-            publish_date=publish_date,
-            max_rows=max_rows,
-            include_summary=include_summary,
-        )
-
-    def news_fallback(
-        self,
-        sources: list[str] | tuple[str, ...] | None = None,
-        cookie: str | None = None,
-        cookie_file: str | None = None,
-        cookie_env: str = "TUSHARE_COOKIE",
-        timeout: float = 30.0,
-        delay: float = 0.3,
-        retries: int = 2,
-        publish_date: str | None = None,
+        anchor_date: str | date | datetime | None = None,
         max_rows: int = 0,
         include_summary: bool = False,
     ) -> Any:
@@ -461,6 +436,7 @@ class TushareProvider:
             delay=delay,
             retries=retries,
             publish_date=publish_date,
+            anchor_date=anchor_date,
         )
         if max_rows > 0:
             payload = dict(payload)

@@ -2,7 +2,7 @@ import io
 import json
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -41,6 +41,17 @@ class CliEventsTest(unittest.TestCase):
         self.assertEqual(code, 0)
         crawl.assert_called_once()
         self.assertIn('"src": "cls"', buffer.getvalue())
+
+    def test_top_level_news_command_is_removed(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            with self.assertRaises(SystemExit) as exc:
+                main(["news", "--source", "cls"])
+
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn("invalid choice", stderr.getvalue())
 
     def test_events_news_writes_snapshot_and_merged_output(self) -> None:
         payload = {"sources": [], "records": [{"dedupe_key": "k1", "datetime": "2026-06-03 09:31:00", "fetched_at": "2026-06-03T09:40:00+08:00", "src": "cls"}]}

@@ -91,7 +91,7 @@ class NewsTest(unittest.TestCase):
         self.assertEqual(records[0]["date"], "2026-06-01")
         self.assertEqual(records[0]["datetime"], "2026-06-01 09:31:00")
         self.assertEqual(records[0]["date_source"], "explicit_publish_date")
-        self.assertEqual(records[0]["date_confidence"], "high")
+        self.assertNotIn("date_confidence", records[0])
         self.assertEqual(records[0]["title"], "AI算力")
         self.assertEqual(records[0]["body"], "产业链订单继续增长")
         self.assertEqual(len(records[0]["id"]), 64)
