@@ -6,7 +6,7 @@ from typing import Any
 
 
 def load_known_issues() -> dict[str, list[dict[str, Any]]]:
-    data_path = files("tushare_fastcli").joinpath("known_issues.json")
+    data_path = files("ashare_data_provider").joinpath("known_issues.json")
     return json.loads(data_path.read_text(encoding="utf-8"))
 
 

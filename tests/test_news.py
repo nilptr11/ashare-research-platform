@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from tushare_fastcli.news import (
+from ashare_data_provider.news import (
     TushareNewsError,
     TushareNewsParseError,
     build_news_records,
@@ -13,7 +13,7 @@ from tushare_fastcli.news import (
     normalize_news_sources,
     parse_news_page,
 )
-from tushare_fastcli.output import render
+from ashare_data_provider.output import render
 
 
 NEWS_HTML = """

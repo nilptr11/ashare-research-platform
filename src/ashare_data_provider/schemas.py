@@ -79,7 +79,7 @@ def _schema_from_dict(item: dict[str, Any]) -> ApiSchema:
 
 def load_api_schemas(path: str | Path | None = None) -> dict[str, ApiSchema]:
     if path is None:
-        data_path = files("tushare_fastcli").joinpath("api_schemas.json")
+        data_path = files("ashare_data_provider").joinpath("api_schemas.json")
         payload = json.loads(data_path.read_text(encoding="utf-8"))
     else:
         payload = json.loads(Path(path).read_text(encoding="utf-8"))

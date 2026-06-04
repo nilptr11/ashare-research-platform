@@ -1,6 +1,6 @@
 import unittest
 
-from tushare_fastcli.params import ParameterError, merge_params, parse_param_pair
+from ashare_data_provider.params import ParameterError, merge_params, parse_param_pair
 
 
 class ParamParsingTest(unittest.TestCase):

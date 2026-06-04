@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from scripts.fetch_api_schemas import parse_examples, parse_input_params
-from tushare_fastcli.schemas import SchemaError, get_api_schema, load_api_schemas
+from ashare_data_provider.schemas import SchemaError, get_api_schema, load_api_schemas
 
 
 class ApiSchemasTest(unittest.TestCase):

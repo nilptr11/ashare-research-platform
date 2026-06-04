@@ -106,7 +106,7 @@ class InterfaceRegistry:
 
 def load_registry(path: str | Path | None = None) -> InterfaceRegistry:
     if path is None:
-        data_path = files("tushare_fastcli").joinpath("interfaces.json")
+        data_path = files("ashare_data_provider").joinpath("interfaces.json")
         payload = json.loads(data_path.read_text(encoding="utf-8"))
     else:
         payload = json.loads(Path(path).read_text(encoding="utf-8"))

@@ -1,4 +1,4 @@
-"""Tushare 快速调用工具。"""
+"""A 股数据 Provider 与 CLI。"""
 
 from .client import TushareCallError, TushareCaller, TushareError
 from .events import (
@@ -24,8 +24,8 @@ from .news import (
 from .provider import (
     TushareInterfaceSelectionError,
     TusharePermissionError,
-    TushareProvider,
-    TushareProviderError,
+    AShareProvider,
+    AShareProviderError,
     TushareUnknownInterfaceError,
 )
 from .recipes import (
@@ -60,8 +60,8 @@ __all__ = [
     "TushareNewsFetchError",
     "TushareNewsParseError",
     "TusharePermissionError",
-    "TushareProvider",
-    "TushareProviderError",
+    "AShareProvider",
+    "AShareProviderError",
     "TushareUnknownInterfaceError",
     "auto_periods",
     "build_news_records",

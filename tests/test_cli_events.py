@@ -6,12 +6,12 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from tushare_fastcli.cli import main
+from ashare_data_provider.cli import main
 
 
 class CliEventsTest(unittest.TestCase):
     def test_events_notice_outputs_provider_records(self) -> None:
-        with patch("tushare_fastcli.provider.TushareProvider.a_stock_notice", return_value=[{"event_type": "notice", "title": "公告"}]) as notice:
+        with patch("ashare_data_provider.provider.AShareProvider.a_stock_notice", return_value=[{"event_type": "notice", "title": "公告"}]) as notice:
             buffer = io.StringIO()
             with redirect_stdout(buffer):
                 code = main(["events", "notice", "--days", "3", "--end-date", "20260603", "--format", "json"])
@@ -21,7 +21,7 @@ class CliEventsTest(unittest.TestCase):
         self.assertIn('"event_type": "notice"', buffer.getvalue())
 
     def test_events_forecast_outputs_provider_records(self) -> None:
-        with patch("tushare_fastcli.provider.TushareProvider.earnings_forecast", return_value=[{"event_type": "forecast", "period": "20260331"}]) as forecast:
+        with patch("ashare_data_provider.provider.AShareProvider.earnings_forecast", return_value=[{"event_type": "forecast", "period": "20260331"}]) as forecast:
             buffer = io.StringIO()
             with redirect_stdout(buffer):
                 code = main(["events", "forecast", "--period", "20260331", "--format", "json"])
@@ -32,8 +32,8 @@ class CliEventsTest(unittest.TestCase):
 
     def test_events_news_reuses_page_crawler(self) -> None:
         payload = {"sources": [], "records": [{"src": "cls", "content": "a"}]}
-        with patch("tushare_fastcli.cli.load_tushare_cookie", return_value="uid=1; username=u"):
-            with patch("tushare_fastcli.cli.crawl_tushare_news", return_value=payload) as crawl:
+        with patch("ashare_data_provider.cli.load_tushare_cookie", return_value="uid=1; username=u"):
+            with patch("ashare_data_provider.cli.crawl_tushare_news", return_value=payload) as crawl:
                 buffer = io.StringIO()
                 with redirect_stdout(buffer):
                     code = main(["events", "news", "--source", "cls", "--format", "json"])
@@ -58,8 +58,8 @@ class CliEventsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             snapshot = Path(tmp_dir) / "snapshot.jsonl"
             merged = Path(tmp_dir) / "combined.jsonl"
-            with patch("tushare_fastcli.cli.load_tushare_cookie", return_value="uid=1; username=u"):
-                with patch("tushare_fastcli.cli.crawl_tushare_news", return_value=payload):
+            with patch("ashare_data_provider.cli.load_tushare_cookie", return_value="uid=1; username=u"):
+                with patch("ashare_data_provider.cli.crawl_tushare_news", return_value=payload):
                     buffer = io.StringIO()
                     with redirect_stdout(buffer):
                         code = main([

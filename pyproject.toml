@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tushare-fastcli"
+name = "ashare-data-provider"
 version = "0.1.0"
-description = "Index-driven Tushare CLI for LLM and quant workflows."
+description = "A-share data provider and CLI for LLM and quant workflows."
 readme = "README.md"
 requires-python = ">=3.14"
 authors = [
@@ -19,11 +19,11 @@ dependencies = [
 ]
 
 [project.scripts]
-tushare-fastcli = "tushare_fastcli.cli:main"
-tsfc = "tushare_fastcli.cli:main"
+ashare-data-provider = "ashare_data_provider.cli:main"
+ashare = "ashare_data_provider.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-tushare_fastcli = ["interfaces.json", "api_defaults.json", "api_schemas.json", "known_issues.json", "recipes.json"]
+ashare_data_provider = ["interfaces.json", "api_defaults.json", "api_schemas.json", "known_issues.json", "recipes.json"]

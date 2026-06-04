@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from tushare_fastcli.client import TushareCallError, TushareCaller, configure_tushare_proxy
+from ashare_data_provider.client import TushareCallError, TushareCaller, configure_tushare_proxy
 
 
 class ClientTest(unittest.TestCase):

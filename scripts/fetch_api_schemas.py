@@ -17,8 +17,8 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from tushare_fastcli.defaults import load_api_defaults  # noqa: E402
-from tushare_fastcli.registry import InterfaceEntry, load_registry  # noqa: E402
+from ashare_data_provider.defaults import load_api_defaults  # noqa: E402
+from ashare_data_provider.registry import InterfaceEntry, load_registry  # noqa: E402
 
 
 CALL_PATTERN = re.compile(r"\bpro\.([a-zA-Z_][a-zA-Z0-9_]*)\((.*?)\)", re.DOTALL)
@@ -28,7 +28,7 @@ def fetch_text(url: str, timeout: int, retries: int) -> str:
     last_error: Exception | None = None
     for attempt in range(retries + 1):
         try:
-            request = Request(url, headers={"User-Agent": "tushare-fastcli/0.1"})
+            request = Request(url, headers={"User-Agent": "ashare-data-provider/0.1"})
             with urlopen(request, timeout=timeout) as response:
                 return response.read().decode("utf-8")
         except (OSError, URLError, TimeoutError) as exc:
@@ -249,7 +249,7 @@ def write_reports(rows: list[dict[str, Any]], output_dir: Path, timestamp: str) 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="抓取 Tushare 官方文档中的接口入参 schema")
-    parser.add_argument("--output", default=ROOT / "src/tushare_fastcli/api_schemas.json", type=Path)
+    parser.add_argument("--output", default=ROOT / "src/ashare_data_provider/api_schemas.json", type=Path)
     parser.add_argument("--output-dir", default=ROOT / "reports", type=Path, help="报告输出目录")
     parser.add_argument("--timeout", default=15, type=int, help="单个文档抓取超时秒数")
     parser.add_argument("--retries", default=2, type=int, help="单个文档抓取重试次数")

@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from scripts.smoke_all_interfaces import selected_entries
-from tushare_fastcli.registry import InterfaceRegistry
+from ashare_data_provider.registry import InterfaceRegistry
 
 
 def registry_from_keys(keys: list[str]) -> InterfaceRegistry:

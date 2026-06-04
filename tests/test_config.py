@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from tushare_fastcli.config import load_config, read_env_file
+from ashare_data_provider.config import load_config, read_env_file
 
 
 class ConfigTest(unittest.TestCase):

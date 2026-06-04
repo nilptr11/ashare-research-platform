@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 
 from scripts.generate_interfaces import parse_markdown
-from tushare_fastcli.registry import InterfaceRegistry
+from ashare_data_provider.registry import InterfaceRegistry
 
 
 ROOT = Path(__file__).resolve().parents[1]

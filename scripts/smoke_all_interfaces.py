@@ -15,11 +15,11 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from tushare_fastcli.client import TushareCaller  # noqa: E402
-from tushare_fastcli.config import load_config  # noqa: E402
-from tushare_fastcli.defaults import default_params as configured_default_params  # noqa: E402
-from tushare_fastcli.issues import known_issues  # noqa: E402
-from tushare_fastcli.registry import InterfaceEntry, load_registry  # noqa: E402
+from ashare_data_provider.client import TushareCaller  # noqa: E402
+from ashare_data_provider.config import load_config  # noqa: E402
+from ashare_data_provider.defaults import default_params as configured_default_params  # noqa: E402
+from ashare_data_provider.issues import known_issues  # noqa: E402
+from ashare_data_provider.registry import InterfaceEntry, load_registry  # noqa: E402
 
 
 def default_params(

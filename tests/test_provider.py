@@ -3,14 +3,14 @@ import unittest
 from datetime import datetime
 from unittest.mock import patch
 
-from tushare_fastcli.provider import (
+from ashare_data_provider.provider import (
     STOCK_BASIC_FIELDS,
     TushareInterfaceSelectionError,
     TusharePermissionError,
-    TushareProvider,
+    AShareProvider,
     TushareUnknownInterfaceError,
 )
-from tushare_fastcli.registry import InterfaceRegistry
+from ashare_data_provider.registry import InterfaceRegistry
 
 
 class FakeCaller:
@@ -46,8 +46,8 @@ def make_registry(*items):
 
 def make_provider(registry, caller=None, **kwargs):
     with patch.dict(os.environ, {}, clear=True):
-        return TushareProvider(
-            env_file="/tmp/tushare-fastcli-test-missing.env",
+        return AShareProvider(
+            env_file="/tmp/ashare-data-provider-test-missing.env",
             registry=registry,
             caller=caller or FakeCaller(),
             **kwargs,
@@ -233,7 +233,7 @@ class ProviderTest(unittest.TestCase):
         caller = FakeCaller(calendar)
         provider = make_provider(make_registry({"api_name": "trade_cal"}, {"api_name": "daily"}), caller=caller)
 
-        with patch("tushare_fastcli.provider.datetime", FixedDateTime):
+        with patch("ashare_data_provider.provider.datetime", FixedDateTime):
             provider.daily_snapshot()
 
         self.assertEqual(caller.calls[0]["api_name"], "trade_cal")
@@ -243,7 +243,7 @@ class ProviderTest(unittest.TestCase):
     def test_a_stock_notice_uses_akshare_event_layer(self) -> None:
         provider = make_provider(make_registry({"api_name": "daily"}))
 
-        with patch("tushare_fastcli.events.fetch_notice", return_value=[{"event_type": "notice"}, {"event_type": "notice"}]) as fetch:
+        with patch("ashare_data_provider.events.fetch_notice", return_value=[{"event_type": "notice"}, {"event_type": "notice"}]) as fetch:
             records = provider.a_stock_notice(days=3, end_date="20260603", stock="000001", category="财务报告", keyword="分红", max_rows=1)
 
         fetch.assert_called_once_with(
@@ -262,7 +262,7 @@ class ProviderTest(unittest.TestCase):
         provider = make_provider(make_registry({"api_name": "forecast"}))
         caller = provider._caller
 
-        with patch("tushare_fastcli.events.fetch_forecast", return_value=[{"event_type": "forecast"}]) as fetch:
+        with patch("ashare_data_provider.events.fetch_forecast", return_value=[{"event_type": "forecast"}]) as fetch:
             records = provider.earnings_forecast(days=60, periods=["20260331"], stock="000001")
 
         fetch.assert_called_once_with(
@@ -286,8 +286,8 @@ class ProviderTest(unittest.TestCase):
             "records": [{"src": "sina", "content": "a"}, {"src": "cls", "content": "b"}],
         }
 
-        with patch("tushare_fastcli.news.load_tushare_cookie", return_value="uid=1; username=u") as load_cookie:
-            with patch("tushare_fastcli.news.crawl_tushare_news", return_value=payload) as crawl:
+        with patch("ashare_data_provider.news.load_tushare_cookie", return_value="uid=1; username=u") as load_cookie:
+            with patch("ashare_data_provider.news.crawl_tushare_news", return_value=payload) as crawl:
                 records = provider.event_news(sources=["sina", "cls"], anchor_date="20260603", max_rows=1)
 
         load_cookie.assert_called_once()

@@ -40,7 +40,7 @@ def _recipe_from_dict(item: dict[str, Any]) -> ApiRecipe:
 
 def load_recipes(path: str | Path | None = None) -> dict[str, ApiRecipe]:
     if path is None:
-        data_path = files("tushare_fastcli").joinpath("recipes.json")
+        data_path = files("ashare_data_provider").joinpath("recipes.json")
         payload = json.loads(data_path.read_text(encoding="utf-8"))
     else:
         payload = json.loads(Path(path).read_text(encoding="utf-8"))

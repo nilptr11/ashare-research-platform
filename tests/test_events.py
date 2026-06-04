@@ -3,7 +3,7 @@ from datetime import date
 
 import pandas as pd
 
-from tushare_fastcli.events import (
+from ashare_data_provider.events import (
     AStockEventError,
     auto_periods,
     build_forecast_records,

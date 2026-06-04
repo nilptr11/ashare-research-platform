@@ -44,6 +44,25 @@ wheels = [
 ]
 
 [[package]]
+name = "ashare-data-provider"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "akshare" },
+    { name = "beautifulsoup4" },
+    { name = "pandas" },
+    { name = "tushare" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "akshare", specifier = ">=1.18.64" },
+    { name = "beautifulsoup4", specifier = ">=4.12" },
+    { name = "pandas", specifier = ">=2.3.0" },
+    { name = "tushare", specifier = ">=1.4.21" },
+]
+
+[[package]]
 name = "beautifulsoup4"
 version = "4.14.3"
 source = { registry = "https://pypi.org/simple" }
@@ -539,25 +558,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/91/a4/5ce99585209410463e4b203d13c73d356c6ac92daea48af182932af7cb61/tushare-1.4.29.tar.gz", hash = "sha256:f578fb778868c0b744ac9173a837b695fd82e8d1b1e0d39c1f882b0e4fef7ecb", size = 128623, upload-time = "2026-03-25T06:33:44.722Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/33/3e/d426a56e5feac9b0aaada1c6b0745ed03422d4a713295e0bbb44c8ea86fe/tushare-1.4.29-py3-none-any.whl", hash = "sha256:82554af953ea5ac3d8771d42330493181031c7e68dccce03a491c7356e9ba4b2", size = 142920, upload-time = "2026-03-25T06:33:43.111Z" },
-]
-
-[[package]]
-name = "tushare-fastcli"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "akshare" },
-    { name = "beautifulsoup4" },
-    { name = "pandas" },
-    { name = "tushare" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "akshare", specifier = ">=1.18.64" },
-    { name = "beautifulsoup4", specifier = ">=4.12" },
-    { name = "pandas", specifier = ">=2.3.0" },
-    { name = "tushare", specifier = ">=1.4.21" },
 ]
 
 [[package]]

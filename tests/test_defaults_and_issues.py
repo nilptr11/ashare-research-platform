@@ -1,7 +1,7 @@
 import unittest
 
-from tushare_fastcli.defaults import default_params
-from tushare_fastcli.issues import known_issues
+from ashare_data_provider.defaults import default_params
+from ashare_data_provider.issues import known_issues
 
 
 class DefaultsAndIssuesTest(unittest.TestCase):

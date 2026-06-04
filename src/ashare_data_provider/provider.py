@@ -18,23 +18,23 @@ ADJ_FACTOR_FIELDS = default_fields("adj_factor")
 STK_LIMIT_FIELDS = default_fields("stk_limit")
 
 
-class TushareProviderError(TushareError):
+class AShareProviderError(TushareError):
     pass
 
 
-class TushareUnknownInterfaceError(TushareProviderError):
+class TushareUnknownInterfaceError(AShareProviderError):
     def __init__(self, api_name: str) -> None:
         self.api_name = api_name
         super().__init__(f"未找到接口：{api_name}。如需强制调用，Python 设置 allow_unknown=True；CLI 加 --allow-unknown。")
 
 
-class TusharePermissionError(TushareProviderError):
+class TusharePermissionError(AShareProviderError):
     def __init__(self, entry: InterfaceEntry, detail: str) -> None:
         self.entry = entry
         super().__init__(f"接口可能不可用：{entry.api_name}:{entry.doc_id} ({detail})。如需强制调用，Python 设置 force=True；CLI 加 --force。")
 
 
-class TushareInterfaceSelectionError(TushareProviderError):
+class TushareInterfaceSelectionError(AShareProviderError):
     def __init__(self, api_name: str, doc_id: str | None = None, key: str | None = None) -> None:
         self.api_name = api_name
         self.doc_id = doc_id
@@ -74,11 +74,11 @@ def _calendar_records(calendar: Any, start_text: str, end_text: str) -> list[dic
     if isinstance(calendar, list):
         return list(calendar)
     if not hasattr(calendar, "empty"):
-        raise TushareProviderError("交易日历返回值不是 DataFrame 或 list[dict]")
+        raise AShareProviderError("交易日历返回值不是 DataFrame 或 list[dict]")
     if calendar.empty:
-        raise TushareProviderError(f"未获取到交易日历：{start_text} - {end_text}")
+        raise AShareProviderError(f"未获取到交易日历：{start_text} - {end_text}")
     if "cal_date" not in calendar or "is_open" not in calendar:
-        raise TushareProviderError("交易日历缺少 cal_date 或 is_open 字段")
+        raise AShareProviderError("交易日历缺少 cal_date 或 is_open 字段")
     return calendar[["cal_date", "is_open"]].to_dict("records")
 
 
@@ -90,7 +90,7 @@ def _permission_block_reason(entry: InterfaceEntry, config: TushareConfig) -> st
     return None
 
 
-class TushareProvider:
+class AShareProvider:
     """Public Python API for upper-layer scanners, strategies, and automations."""
 
     def __init__(
@@ -283,7 +283,7 @@ class TushareProvider:
             if str(row.get("is_open")).lower() in {"1", "1.0", "true"}
         )
         if not open_days:
-            raise TushareProviderError(f"{start_text} - {end_text} 范围内没有开市日")
+            raise AShareProviderError(f"{start_text} - {end_text} 范围内没有开市日")
         return open_days[-1]
 
     def daily_snapshot(

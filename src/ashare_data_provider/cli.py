@@ -25,7 +25,7 @@ from .params import merge_params
 from .provider import (
     TushareInterfaceSelectionError,
     TusharePermissionError,
-    TushareProvider,
+    AShareProvider,
     TushareUnknownInterfaceError,
 )
 from .registry import InterfaceEntry, load_registry
@@ -38,8 +38,8 @@ ELIGIBILITY_VALUES = ["points_ok", "points_insufficient", "needs_separate_permis
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="tushare-fastcli",
-        description="面向大模型和量化业务的 Tushare 快速调用 CLI。",
+        prog="ashare",
+        description="面向大模型和量化业务的 A 股数据 Provider CLI。",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -246,7 +246,7 @@ def _handle_info(args: argparse.Namespace) -> int:
 def _handle_call(args: argparse.Namespace) -> int:
     try:
         params = merge_params(args.params, args.params_file, args.param)
-        provider = TushareProvider(
+        provider = AShareProvider(
             token=args.token,
             proxy_url=args.proxy_url,
             env_file=args.env_file,
@@ -349,7 +349,7 @@ def _handle_events(args: argparse.Namespace) -> int:
         return 0
 
     try:
-        provider = TushareProvider()
+        provider = AShareProvider()
         if args.event_type == "notice":
             result = provider.a_stock_notice(
                 days=args.days,

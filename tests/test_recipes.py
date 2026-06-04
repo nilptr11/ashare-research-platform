@@ -1,6 +1,6 @@
 import unittest
 
-from tushare_fastcli.recipes import default_fields, default_recipe_params, get_recipe, load_recipes
+from ashare_data_provider.recipes import default_fields, default_recipe_params, get_recipe, load_recipes
 
 
 class RecipesTest(unittest.TestCase):

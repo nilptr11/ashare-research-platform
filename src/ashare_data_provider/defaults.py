@@ -6,7 +6,7 @@ from typing import Any
 
 
 def load_api_defaults() -> dict[str, dict[str, Any]]:
-    data_path = files("tushare_fastcli").joinpath("api_defaults.json")
+    data_path = files("ashare_data_provider").joinpath("api_defaults.json")
     return json.loads(data_path.read_text(encoding="utf-8"))
 
 

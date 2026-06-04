@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from tushare_fastcli.registry import InterfaceEntry, load_registry  # noqa: E402
+from ashare_data_provider.registry import InterfaceEntry, load_registry  # noqa: E402
 
 
 POINT_PATTERN = re.compile(r"(\d+(?:\.\d+)?)\s*(?:万)?\s*积分")
@@ -23,7 +23,7 @@ PERMISSION_KEYWORDS = ["权限", "积分", "调取说明", "限量", "每分钟"
 
 
 def fetch_text(url: str, timeout: int) -> str:
-    request = Request(url, headers={"User-Agent": "tushare-fastcli/0.1"})
+    request = Request(url, headers={"User-Agent": "ashare-data-provider/0.1"})
     with urlopen(request, timeout=timeout) as response:
         return response.read().decode("utf-8")
 
