@@ -203,7 +203,7 @@ metrics = provider.daily_basic_snapshot(completed_trade_date)
 limits = provider.limit_price_snapshot(completed_trade_date)
 ```
 
-`latest_trade_date()` 表示截至 `as_of` 的最近开市日，可能包含当天；`previous_trade_date()` 表示 `as_of` 之前的上一个已完成交易日。选股扫描器和盘中自动化默认应使用 `previous_trade_date()`。
+`latest_trade_date()` 表示截至 `as_of` 的最近开市日，可能包含当天；`previous_trade_date()` 表示上一个已完成交易日：若 `as_of` 当天开市且已到 15:00 后则返回当天，若当天未开市则返回最近开市日，否则返回前一开市日。选股扫描器和盘中自动化默认应使用 `previous_trade_date()`。
 
 常用接口的默认字段、默认参数、主键、日期字段等元数据维护在 `recipes.json`，可供上层数据仓库或扫描器读取：
 

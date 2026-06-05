@@ -204,8 +204,9 @@ class ProviderTest(unittest.TestCase):
 
         self.assertEqual(provider.latest_trade_date(as_of="2026-06-01"), "20260601")
 
-    def test_previous_trade_date_excludes_as_of(self) -> None:
+    def test_previous_trade_date_excludes_date_only_as_of(self) -> None:
         calendar = [
+            {"cal_date": "20260601", "is_open": 1},
             {"cal_date": "20260531", "is_open": 0},
             {"cal_date": "20260530", "is_open": 0},
             {"cal_date": "20260529", "is_open": 1},
@@ -216,16 +217,65 @@ class ProviderTest(unittest.TestCase):
         self.assertEqual(provider.previous_trade_date(as_of="2026-06-01"), "20260529")
         self.assertEqual(
             caller.calls[0]["params"],
+            {"exchange": "SSE", "start_date": "20260502", "end_date": "20260601"},
+        )
+        self.assertEqual(
+            caller.calls[1]["params"],
             {"exchange": "SSE", "start_date": "20260501", "end_date": "20260531"},
         )
+
+    def test_previous_trade_date_uses_today_after_close_when_open(self) -> None:
+        calendar = [
+            {"cal_date": "20260601", "is_open": 1},
+            {"cal_date": "20260531", "is_open": 0},
+            {"cal_date": "20260530", "is_open": 0},
+            {"cal_date": "20260529", "is_open": 1},
+        ]
+        caller = FakeCaller(calendar)
+        provider = make_provider(make_registry({"api_name": "trade_cal"}), caller=caller)
+
+        self.assertEqual(provider.previous_trade_date(as_of=datetime(2026, 6, 1, 15, 1)), "20260601")
+        self.assertEqual(len(caller.calls), 1)
+        self.assertEqual(
+            caller.calls[0]["params"],
+            {"exchange": "SSE", "start_date": "20260502", "end_date": "20260601"},
+        )
+
+    def test_previous_trade_date_uses_previous_open_day_before_close(self) -> None:
+        calendar = [
+            {"cal_date": "20260601", "is_open": 1},
+            {"cal_date": "20260531", "is_open": 0},
+            {"cal_date": "20260530", "is_open": 0},
+            {"cal_date": "20260529", "is_open": 1},
+        ]
+        caller = FakeCaller(calendar)
+        provider = make_provider(make_registry({"api_name": "trade_cal"}), caller=caller)
+
+        self.assertEqual(provider.previous_trade_date(as_of=datetime(2026, 6, 1, 14, 59)), "20260529")
+        self.assertEqual(
+            caller.calls[1]["params"],
+            {"exchange": "SSE", "start_date": "20260501", "end_date": "20260531"},
+        )
+
+    def test_previous_trade_date_ignores_future_calendar_rows(self) -> None:
+        calendar = [
+            {"cal_date": "20260602", "is_open": 1},
+            {"cal_date": "20260601", "is_open": 1},
+            {"cal_date": "20260529", "is_open": 1},
+        ]
+        caller = FakeCaller(calendar)
+        provider = make_provider(make_registry({"api_name": "trade_cal"}), caller=caller)
+
+        self.assertEqual(provider.previous_trade_date(as_of=datetime(2026, 6, 1, 14, 59)), "20260529")
 
     def test_daily_snapshot_defaults_to_previous_trade_date(self) -> None:
         class FixedDateTime(datetime):
             @classmethod
             def now(cls, tz=None):  # noqa: ANN001
-                return cls(2026, 6, 1)
+                return cls(2026, 6, 1, 14, 59)
 
         calendar = [
+            {"cal_date": "20260601", "is_open": 1},
             {"cal_date": "20260531", "is_open": 0},
             {"cal_date": "20260530", "is_open": 0},
             {"cal_date": "20260529", "is_open": 1},
@@ -237,8 +287,9 @@ class ProviderTest(unittest.TestCase):
             provider.daily_snapshot()
 
         self.assertEqual(caller.calls[0]["api_name"], "trade_cal")
-        self.assertEqual(caller.calls[1]["api_name"], "daily")
-        self.assertEqual(caller.calls[1]["params"], {"trade_date": "20260529"})
+        self.assertEqual(caller.calls[1]["api_name"], "trade_cal")
+        self.assertEqual(caller.calls[2]["api_name"], "daily")
+        self.assertEqual(caller.calls[2]["params"], {"trade_date": "20260529"})
 
     def test_a_stock_notice_uses_akshare_event_layer(self) -> None:
         provider = make_provider(make_registry({"api_name": "daily"}))

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from .client import TushareCaller, TushareError
@@ -251,7 +251,29 @@ class AShareProvider:
         lookback_days: int = 30,
         force: bool = False,
     ) -> str:
-        base_date = datetime.now().date() if as_of is None else _date_from_value(as_of)
+        if as_of is None:
+            base_datetime = datetime.now()
+            base_date = base_datetime.date()
+            base_time = base_datetime.time()
+        elif isinstance(as_of, datetime):
+            base_date = as_of.date()
+            base_time = as_of.time()
+        else:
+            base_date = _date_from_value(as_of)
+            base_time = time.min
+
+        latest_open_date = self._last_open_trade_date(
+            end_date=base_date,
+            exchange=exchange,
+            lookback_days=lookback_days,
+            force=force,
+        )
+        if latest_open_date != base_date.strftime("%Y%m%d"):
+            return latest_open_date
+
+        if base_time >= time(15, 0):
+            return latest_open_date
+
         return self._last_open_trade_date(
             end_date=base_date - timedelta(days=1),
             exchange=exchange,
@@ -278,9 +300,11 @@ class AShareProvider:
         )
         records = _calendar_records(calendar, start_text, end_text)
         open_days = sorted(
-            str(row["cal_date"])
+            cal_date
             for row in records
             if str(row.get("is_open")).lower() in {"1", "1.0", "true"}
+            for cal_date in [_format_yyyymmdd(row["cal_date"])]
+            if start_text <= cal_date <= end_text
         )
         if not open_days:
             raise AShareProviderError(f"{start_text} - {end_text} 范围内没有开市日")
