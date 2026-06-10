@@ -29,7 +29,7 @@ TUSHARE_ALLOW_SEPARATE_PERMISSION=false
 TUSHARE_COOKIE=uid=...; username=...
 ```
 
-配置优先级是：CLI 参数 > 系统环境变量 > `.env`。`TUSHARE_PROXY_URL` 留空时使用 Tushare SDK 默认地址。`TUSHARE_POINTS` 用于本地调用前权限判断，`TUSHARE_ALLOW_SEPARATE_PERMISSION=false` 时需要 `--force` 才会调用需单独权限的接口。
+默认会自动查找 `.env`：先读当前目录，若在项目子目录中运行则继续向上查找，最后兜底读项目根目录 `.env`。配置优先级是：CLI 参数 > 系统环境变量 > `.env`。`TUSHARE_PROXY_URL` 留空时使用 Tushare SDK 默认地址。`TUSHARE_POINTS` 用于本地调用前权限判断，`TUSHARE_ALLOW_SEPARATE_PERMISSION=false` 时需要 `--force` 才会调用需单独权限的接口。
 `TUSHARE_COOKIE` 只用于 `ashare events news` 抓取 Tushare 资讯网页，不会写入输出文件。
 
 ## 常用命令

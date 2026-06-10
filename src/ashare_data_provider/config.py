@@ -9,6 +9,19 @@ class ConfigError(ValueError):
     pass
 
 
+_DEFAULT_ENV_FILE = Path(".env")
+
+
+def _find_project_root() -> Path:
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    return Path(__file__).resolve().parent
+
+
+_PROJECT_ROOT = _find_project_root()
+
+
 @dataclass(frozen=True)
 class TushareConfig:
     token: str | None
@@ -53,8 +66,53 @@ def _parse_bool(value: str | None, default: bool) -> bool:
     raise ConfigError(f"布尔配置必须是 true/false：{normalized}")
 
 
+def _default_env_candidates() -> list[Path]:
+    cwd = Path.cwd()
+    candidates = [cwd / _DEFAULT_ENV_FILE]
+
+    try:
+        cwd_resolved = cwd.resolve()
+        project_root_resolved = _PROJECT_ROOT.resolve()
+    except OSError:
+        cwd_resolved = None
+        project_root_resolved = None
+
+    if (
+        cwd_resolved is not None
+        and project_root_resolved is not None
+        and cwd_resolved.is_relative_to(project_root_resolved)
+    ):
+        current = cwd_resolved
+        while current != project_root_resolved:
+            current = current.parent
+            candidates.append(current / _DEFAULT_ENV_FILE)
+
+    candidates.append(_PROJECT_ROOT / _DEFAULT_ENV_FILE)
+
+    unique_candidates: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        unique_candidates.append(candidate)
+        seen.add(candidate)
+    return unique_candidates
+
+
+def resolve_env_file(path: str | Path = _DEFAULT_ENV_FILE) -> Path:
+    env_path = Path(path).expanduser()
+    if env_path.is_absolute() or env_path != _DEFAULT_ENV_FILE:
+        return env_path
+
+    candidates = _default_env_candidates()
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
 def read_env_file(path: str | Path = ".env") -> dict[str, str]:
-    env_path = Path(path)
+    env_path = resolve_env_file(path)
     if not env_path.exists():
         return {}
     if not env_path.is_file():

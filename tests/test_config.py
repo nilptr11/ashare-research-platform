@@ -46,6 +46,30 @@ class ConfigTest(unittest.TestCase):
             self.assertEqual(config.points, 15000)
             self.assertFalse(config.allow_separate_permission)
 
+    def test_load_config_finds_default_dotenv_from_project_subdirectory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            subdir = root / "reports"
+            subdir.mkdir()
+            (root / ".env").write_text(
+                "TUSHARE_TOKEN=token_from_project_file\nTUSHARE_PROXY_URL=https://project-proxy.example.com\n",
+                encoding="utf-8",
+            )
+
+            original_cwd = Path.cwd()
+            try:
+                os.chdir(subdir)
+                with (
+                    patch("ashare_data_provider.config._PROJECT_ROOT", root),
+                    patch.dict(os.environ, {}, clear=True),
+                ):
+                    config = load_config()
+            finally:
+                os.chdir(original_cwd)
+
+            self.assertEqual(config.token, "token_from_project_file")
+            self.assertEqual(config.proxy_url, "https://project-proxy.example.com")
+
     def test_blank_proxy_url_disables_env_proxy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             path = Path(tmp_dir) / ".env"

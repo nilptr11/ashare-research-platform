@@ -195,7 +195,7 @@ def write_reports(results: list[dict[str, Any]], output_dir: Path) -> tuple[Path
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="批量 smoke test Tushare 接口索引")
-    parser.add_argument("--env-file", default=".env", help="配置文件路径")
+    parser.add_argument("--env-file", default=".env", help="配置文件路径，默认自动查找 .env")
     parser.add_argument("--proxy-url", help="Tushare API 代理地址；传空字符串可禁用 .env 中的代理")
     parser.add_argument("--output-dir", default="reports", type=Path, help="报告输出目录")
     parser.add_argument("--timeout", default=20, type=int, help="单个接口超时时间，单位秒")
