@@ -9,7 +9,7 @@ venv/
 .env
 dist/
 build/
-reports/
+/reports/
 data/
 *.csv
 *.jsonl
