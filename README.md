@@ -134,6 +134,14 @@ uv run ashare feature read market_strength --as-of 20260623 --window 5 --limit 1
 uv run ashare feature meta limit_sentiment --as-of 20260623 --window 5
 ```
 
+Feature 是可复现的分析特征，不是策略，也不是最终事实源。Codex 使用 feature 时必须遵守：
+
+- feature 只用于筛查、排序、聚合展示和发现候选信号。
+- 不能只凭 `strength_score`、`leader_score`、`elasticity_score` 等评分下结论。
+- 形成题材扩散、资金确认、涨跌停结构、龙虎榜验证等关键判断前，必须回查对应 mart 明细，例如 `dc_index`、`moneyflow_dc`、`limit_list_d`、`limit_list_ths`、`top_list`。
+- 必须先看 feature meta 里的 `inputs`、`quality_status`、`quality`、窗口和分区日期；如果状态不是 `ok/ready`，结论只能写成降级或暂无可靠数据。
+- strategy 不在 feature 层。策略必须另行定义入场、退出、仓位、风控、交易成本和回测评估。
+
 入库和检索外部产业证据：
 
 ```bash

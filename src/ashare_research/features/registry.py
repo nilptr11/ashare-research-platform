@@ -15,6 +15,7 @@ def default_feature_specs() -> list[FeatureSpec]:
             partition_keys=("as_of", "window"),
             primary_key=("as_of", "window", "ts_code"),
             description="指数窗口收益、成交放大和趋势位置。",
+            analysis_columns=("strength_score",),
         ),
         FeatureSpec(
             name="industry_strength",
@@ -24,6 +25,7 @@ def default_feature_specs() -> list[FeatureSpec]:
             partition_keys=("as_of", "window"),
             primary_key=("as_of", "window", "source_dataset", "ts_code"),
             description="申万和中信行业指数窗口收益、成交放大和趋势位置。",
+            analysis_columns=("strength_score", "industry_name"),
         ),
         FeatureSpec(
             name="concept_strength",
@@ -33,6 +35,7 @@ def default_feature_specs() -> list[FeatureSpec]:
             partition_keys=("as_of", "window"),
             primary_key=("as_of", "window", "source_dataset", "ts_code"),
             description="东方财富概念指数窗口涨幅、领涨成分、涨跌家数和成交热度。",
+            analysis_columns=("strength_score", "name", "latest_pct_chg"),
         ),
         FeatureSpec(
             name="limit_sentiment",
@@ -42,6 +45,7 @@ def default_feature_specs() -> list[FeatureSpec]:
             partition_keys=("as_of", "window"),
             primary_key=("as_of", "window", "trade_date"),
             description="涨跌停数量、同花顺涨停池数量、开板次数和封单金额。",
+            analysis_columns=("sentiment_score",),
         ),
         FeatureSpec(
             name="leader_validation",
@@ -51,6 +55,7 @@ def default_feature_specs() -> list[FeatureSpec]:
             partition_keys=("as_of", "window"),
             primary_key=("as_of", "window", "ts_code"),
             description="用窗口涨幅、成交放大、市值、资金流、龙虎榜和涨停池验证龙头市场认可。",
+            analysis_columns=("leader_score", "sw_l1_name", "sw_l2_name", "sw_l3_name"),
         ),
         FeatureSpec(
             name="elasticity_candidates",
@@ -60,6 +65,7 @@ def default_feature_specs() -> list[FeatureSpec]:
             partition_keys=("as_of", "window"),
             primary_key=("as_of", "window", "ts_code"),
             description="用涨幅、成交放大、换手、资金流、涨停和规模惩罚筛选高弹性候选集合。",
+            analysis_columns=("elasticity_score", "sw_l1_name", "sw_l2_name", "sw_l3_name"),
         ),
     ]
 

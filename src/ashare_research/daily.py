@@ -229,12 +229,15 @@ def build_status(
         for window in windows:
             try:
                 meta = feature_store.load_meta(spec.name, as_of=as_of, window=window)
+                quality = feature_store.quality_for_partition(spec, as_of=as_of, window=window)
+                status = "ready" if quality.get("status") == "ok" else str(quality.get("status", "degraded"))
                 feature_checks.append(
                     {
                         "feature": spec.name,
                         "window": window,
-                        "status": "ready",
+                        "status": status,
                         "rows": meta.rows,
+                        "quality": quality,
                         "path": str(feature_store.partition_path(spec.name, as_of=as_of, window=window)),
                     }
                 )
@@ -272,23 +275,34 @@ def build_status(
             context_check["status"] = "read_error"
             context_check["message"] = str(error)
 
+    blocking_statuses = {"missing", "schema_mismatch", "empty", "unregistered", "read_error"}
     blocking = [
         item
         for item in dataset_checks
-        if item.get("required") and item.get("status") != "ready"
+        if item.get("required") and item.get("status") in blocking_statuses
     ]
-    blocking.extend(item for item in feature_checks if item.get("status") != "ready")
+    blocking.extend(item for item in feature_checks if item.get("status") in blocking_statuses)
     if context_check["status"] != "ready":
         blocking.append(context_check)
+
+    degraded = [
+        item
+        for item in [*dataset_checks, *feature_checks]
+        if item.get("status") == "degraded"
+    ]
+    if context_check.get("quality_flags"):
+        degraded.append(context_check)
 
     warnings = [
         item
         for item in dataset_checks
-        if not item.get("required") and item.get("status") != "ready"
+        if not item.get("required") and item.get("status") not in {"ready", "degraded"}
     ]
 
     if blocking:
         status = "blocked"
+    elif degraded:
+        status = "degraded"
     elif warnings:
         status = "warning"
     else:
@@ -303,12 +317,14 @@ def build_status(
             "datasets_total": len(dataset_checks),
             "features_ready": sum(1 for item in feature_checks if item["status"] == "ready"),
             "features_total": len(feature_checks),
+            "degraded": len(degraded),
             "context_ready": context_check["status"] == "ready",
         },
         "datasets": dataset_checks,
         "features": feature_checks,
         "context": context_check,
         "blocking": blocking,
+        "degraded": degraded,
         "warnings": warnings,
         "skipped": list(SKIPPED_DEFAULT_SCOPES),
     }

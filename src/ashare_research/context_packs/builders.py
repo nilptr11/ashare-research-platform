@@ -12,7 +12,7 @@ import pandas as pd
 
 from ..datasets.catalog import DatasetCatalog
 from ..evidence import EvidenceStore
-from ..features import FeatureStore
+from ..features import FeatureRegistry, FeatureStore
 from ..knowledge import KnowledgeStore
 from ..marts.reader import MartReader
 from ..paths import default_data_dir
@@ -246,24 +246,31 @@ class ContextPackBuilder:
         quality_flags: list[str],
     ) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
+        registry = FeatureRegistry.builtin()
         for feature in features:
+            spec = registry.require(feature)
             for window in windows:
                 name = f"{feature}:{window}"
                 try:
                     meta = self.feature_store.load_meta(feature, as_of=as_of, window=window)
+                    quality = self.feature_store.quality_for_partition(spec, as_of=as_of, window=window)
+                    status = "ready" if quality.get("status") == "ok" else str(quality.get("status", "degraded"))
                     path = self.feature_store.partition_path(feature, as_of=as_of, window=window)
-                    row = meta.to_dict() | {"status": "ready", "path": str(path)}
+                    row = meta.to_dict() | {"status": status, "path": str(path), "quality": quality}
                     rows.append(row)
                     inputs.append(
                         ContextInput(
                             kind="feature",
                             name=name,
-                            status="ready",
+                            status=status,
                             content_hash=_file_sha256(path / "_meta.json"),
                             path=str(path),
                             details={"rows": meta.rows, "version": meta.version},
                         )
                     )
+                    if status != "ready":
+                        data_gaps.append({"kind": "feature", "name": name, "status": status, "message": quality.get("reason", "")})
+                        quality_flags.append(f"degraded_feature:{name}")
                 except AShareResearchError as error:
                     rows.append({"feature": feature, "window": window, "status": "missing", "message": str(error)})
                     data_gaps.append({"kind": "feature", "name": name, "status": "missing", "message": str(error)})

@@ -138,6 +138,86 @@ def test_build_concept_strength_from_dc_index(tmp_path):
     assert frame.iloc[0]["breadth_score"] == pytest.approx(20 / 30)
 
 
+def test_concept_strength_quality_degrades_when_scores_are_empty(tmp_path):
+    _write_partition(
+        tmp_path,
+        "dc_index",
+        "trade_date",
+        "20260623",
+        [{"ts_code": "BK001", "trade_date": "20260623"}],
+    )
+
+    FeatureBuilder(MartReader(data_dir=tmp_path)).build("concept_strength", as_of="20260623", windows=[1])
+    meta = FeatureStore(tmp_path).load_meta("concept_strength", as_of="20260623", window=1)
+
+    assert meta.quality_status == "degraded"
+    assert meta.quality["reason"] == "analysis columns below non-null threshold"
+    assert meta.quality["non_null_ratios"]["strength_score"] == 0.0
+
+
+def test_industry_strength_enriches_industry_names_and_levels(tmp_path):
+    _write_partition(
+        tmp_path,
+        "sw_daily",
+        "trade_date",
+        "20260623",
+        [{"ts_code": "801010.SI", "trade_date": "20260623", "close": 100.0, "pct_change": 1.0}],
+    )
+    _write_partition(
+        tmp_path,
+        "ci_daily",
+        "trade_date",
+        "20260623",
+        [{"ts_code": "CI005016.CI", "trade_date": "20260623", "close": 200.0}],
+    )
+    _write_partition(
+        tmp_path,
+        "index_member_all",
+        "snapshot_date",
+        "20260623",
+        [
+            {
+                "l1_code": "801010.SI",
+                "l1_name": "农林牧渔",
+                "l2_code": "801011.SI",
+                "l2_name": "种植业",
+                "l3_code": "801012.SI",
+                "l3_name": "粮食种植",
+                "ts_code": "000001.SZ",
+            }
+        ],
+    )
+    _write_partition(
+        tmp_path,
+        "ci_index_member",
+        "snapshot_date",
+        "20260623",
+        [
+            {
+                "l1_code": "CI005016.CI",
+                "l1_name": "家电",
+                "l2_code": "CI005145.CI",
+                "l2_name": "白色家电Ⅱ",
+                "l3_code": "CI005306.CI",
+                "l3_name": "白色家电Ⅲ",
+                "ts_code": "000002.SZ",
+            }
+        ],
+    )
+
+    FeatureBuilder(MartReader(data_dir=tmp_path)).build("industry_strength", as_of="20260623", windows=[1])
+    frame = FeatureStore(tmp_path).read_partition("industry_strength", as_of="20260623", window=1)
+    meta = FeatureStore(tmp_path).load_meta("industry_strength", as_of="20260623", window=1)
+
+    sw_row = frame[frame["ts_code"] == "801010.SI"].iloc[0]
+    ci_row = frame[frame["ts_code"] == "CI005016.CI"].iloc[0]
+    assert sw_row["industry_name"] == "农林牧渔"
+    assert sw_row["industry_level"] == "L1"
+    assert sw_row["l1"] == "农林牧渔"
+    assert ci_row["industry_name"] == "家电"
+    assert meta.quality_status == "ok"
+
+
 def test_build_leader_validation_uses_moneyflow_top_list_and_limit_pool(tmp_path):
     _write_stock_feature_inputs(tmp_path)
 
@@ -146,6 +226,7 @@ def test_build_leader_validation_uses_moneyflow_top_list_and_limit_pool(tmp_path
 
     assert frame.iloc[0]["ts_code"] == "000001.SZ"
     assert frame.iloc[0]["name"] == "龙头股份"
+    assert frame.iloc[0]["sw_l1_name"] == "电子"
     assert frame.iloc[0]["top_list_count"] == 1
     assert frame.iloc[0]["latest_limit_pool"] == True
     assert frame.iloc[0]["leader_score"] > frame.iloc[1]["leader_score"]
@@ -201,6 +282,32 @@ def _write_stock_feature_inputs(tmp_path):
         [
             {"ts_code": "000001.SZ", "name": "龙头股份", "industry": "硬件", "market": "主板", "list_status": "L"},
             {"ts_code": "000002.SZ", "name": "弹性股份", "industry": "硬件", "market": "创业板", "list_status": "L"},
+        ],
+    )
+    _write_partition(
+        tmp_path,
+        "index_member_all",
+        "snapshot_date",
+        "20260623",
+        [
+            {
+                "ts_code": "000001.SZ",
+                "l1_code": "801080.SI",
+                "l1_name": "电子",
+                "l2_code": "801081.SI",
+                "l2_name": "半导体",
+                "l3_code": "801082.SI",
+                "l3_name": "数字芯片设计",
+            },
+            {
+                "ts_code": "000002.SZ",
+                "l1_code": "801080.SI",
+                "l1_name": "电子",
+                "l2_code": "801081.SI",
+                "l2_name": "半导体",
+                "l3_code": "801083.SI",
+                "l3_name": "模拟芯片设计",
+            },
         ],
     )
     _write_partition(

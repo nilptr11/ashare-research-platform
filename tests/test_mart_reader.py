@@ -67,6 +67,19 @@ def test_reader_blocks_schema_mismatch(tmp_path):
     assert "trade_date" in check.missing_columns
 
 
+def test_reader_degrades_when_analysis_columns_are_missing(tmp_path):
+    _write_partition(tmp_path, "dc_index", "trade_date", "20260623", [{"ts_code": "BK001", "trade_date": "20260623"}])
+
+    reader = MartReader(data_dir=tmp_path)
+    check = reader.check_dataset("dc_index", as_of="20260623")
+    payload = reader.check(["dc_index"], as_of="20260623")
+
+    assert check.status == "degraded"
+    assert "pct_change" in check.missing_analysis_columns
+    assert check.message == "missing analysis columns"
+    assert payload["status"] == "degraded"
+
+
 def test_reader_reads_partition_with_limit(tmp_path):
     _write_partition(
         tmp_path,

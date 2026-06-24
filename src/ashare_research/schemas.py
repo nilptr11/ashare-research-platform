@@ -43,6 +43,8 @@ class DatasetSpec:
     empty_policy: str = "forbid_empty"
     freshness: dict[str, Any] = field(default_factory=dict)
     default_fields: tuple[str, ...] = ()
+    analysis_columns: tuple[str, ...] = ()
+    analysis_min_non_null: float = 0.8
     source_variants: tuple[dict[str, Any], ...] = ()
     group: str = ""
     min_profile: str = "basic"
@@ -66,6 +68,8 @@ class DatasetSpec:
             raise DatasetContractError(f"{self.name}: invalid empty_policy {self.empty_policy!r}")
         if self.min_profile not in {"basic", "standard", "full"}:
             raise DatasetContractError(f"{self.name}: invalid min_profile {self.min_profile!r}")
+        if self.analysis_min_non_null < 0 or self.analysis_min_non_null > 1:
+            raise DatasetContractError(f"{self.name}: invalid analysis_min_non_null {self.analysis_min_non_null!r}")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -80,6 +84,8 @@ class DatasetSpec:
             "empty_policy": self.empty_policy,
             "freshness": dict(self.freshness),
             "default_fields": list(self.default_fields),
+            "analysis_columns": list(self.analysis_columns),
+            "analysis_min_non_null": self.analysis_min_non_null,
             "source_variants": [dict(variant) for variant in self.source_variants],
             "group": self.group,
             "min_profile": self.min_profile,
@@ -183,6 +189,10 @@ class DatasetCheck:
     partition: dict[str, str] = field(default_factory=dict)
     rows: int | None = None
     missing_columns: tuple[str, ...] = ()
+    analysis_columns: tuple[str, ...] = ()
+    missing_analysis_columns: tuple[str, ...] = ()
+    non_null_ratios: dict[str, float] = field(default_factory=dict)
+    quality: dict[str, Any] = field(default_factory=dict)
     path: str | None = None
     message: str = ""
 
@@ -194,6 +204,10 @@ class DatasetCheck:
             "partition": dict(self.partition),
             "rows": self.rows,
             "missing_columns": list(self.missing_columns),
+            "analysis_columns": list(self.analysis_columns),
+            "missing_analysis_columns": list(self.missing_analysis_columns),
+            "non_null_ratios": dict(self.non_null_ratios),
+            "quality": dict(self.quality),
             "path": self.path,
             "message": self.message,
         }
@@ -208,6 +222,8 @@ class FeatureSpec:
     partition_keys: tuple[str, ...]
     primary_key: tuple[str, ...]
     description: str = ""
+    analysis_columns: tuple[str, ...] = ()
+    analysis_min_non_null: float = 0.8
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -218,6 +234,8 @@ class FeatureSpec:
             "partition_keys": list(self.partition_keys),
             "primary_key": list(self.primary_key),
             "description": self.description,
+            "analysis_columns": list(self.analysis_columns),
+            "analysis_min_non_null": self.analysis_min_non_null,
         }
 
 
@@ -253,6 +271,8 @@ class FeaturePartitionMeta:
     inputs: tuple[dict[str, Any], ...] = ()
     schema: str = "ashare.feature_partition.v1"
     generated_at: str | None = None
+    quality_status: str | None = None
+    quality: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -264,6 +284,8 @@ class FeaturePartitionMeta:
             "columns": list(self.columns),
             "inputs": list(self.inputs),
             "generated_at": self.generated_at,
+            "quality_status": self.quality_status,
+            "quality": dict(self.quality),
         }
 
     @classmethod
@@ -277,6 +299,8 @@ class FeaturePartitionMeta:
             columns=tuple(str(column) for column in payload.get("columns", [])),
             inputs=tuple(dict(item) for item in payload.get("inputs", [])),
             generated_at=payload.get("generated_at"),
+            quality_status=payload.get("quality_status"),
+            quality=dict(payload.get("quality", {})),
         )
 
     @classmethod

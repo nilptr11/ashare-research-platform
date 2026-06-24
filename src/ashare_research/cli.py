@@ -477,6 +477,8 @@ def _run_daily(args: argparse.Namespace, reader: MartReader, *, repair: bool) ->
 
     if run_blocking or status_payload["status"] == "blocked":
         status = "blocked"
+    elif status_payload["status"] == "degraded":
+        status = "degraded"
     elif run_warnings or status_payload["status"] == "warning":
         status = "warning"
     else:
@@ -675,12 +677,17 @@ def _publish_dataset_frame(
         },
         refresh=refresh,
     )
+    meta = reader.load_meta(spec.name, partition)
     return {
         "schema": "ashare.data_build_result.v1",
         "dataset": spec.name,
         "partition": partition,
         "rows": len(frame),
         "columns": [str(column) for column in frame.columns],
+        "quality_status": meta.quality_status,
+        "quality": meta.quality,
+        "missing_analysis_columns": list(meta.quality.get("missing_analysis_columns", [])),
+        "non_null_ratios": dict(meta.quality.get("non_null_ratios", {})),
         "raw_path": str(raw_paths[0]),
         "raw_paths": [str(path) for path in raw_paths],
         "mart_path": str(mart_path),

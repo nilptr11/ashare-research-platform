@@ -34,6 +34,7 @@ class FeatureStore:
         parquet_path = path / "part.parquet"
         meta_path = path / "_meta.json"
         frame.to_parquet(parquet_path, index=False)
+        quality = _quality_payload(spec, frame)
         meta = FeaturePartitionMeta(
             feature=spec.name,
             version=spec.version,
@@ -42,6 +43,8 @@ class FeatureStore:
             columns=tuple(str(column) for column in frame.columns),
             inputs=tuple(inputs),
             generated_at=datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="seconds"),
+            quality_status=quality["status"],
+            quality=quality,
         )
         meta_path.write_text(json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
         return FeatureBuildResult(
@@ -69,6 +72,11 @@ class FeatureStore:
             raise FeatureError(f"Missing feature metadata: {path}")
         return FeaturePartitionMeta.from_file(path)
 
+    def quality_for_partition(self, spec: FeatureSpec, *, as_of: str, window: int) -> dict[str, Any]:
+        self.load_meta(spec.name, as_of=as_of, window=window)
+        frame = self.read_partition(spec.name, as_of=as_of, window=window)
+        return _quality_payload(spec, frame)
+
     def discover(self) -> list[dict[str, Any]]:
         if not self.feature_root.exists():
             return []
@@ -89,3 +97,32 @@ class FeatureStore:
                         }
                     )
         return rows
+
+
+def _quality_payload(spec: FeatureSpec, frame: pd.DataFrame) -> dict[str, Any]:
+    missing = [column for column in spec.analysis_columns if column not in frame.columns]
+    ratios: dict[str, float] = {}
+    reason = ""
+    status = "ok"
+    if frame.empty and spec.analysis_columns:
+        status = "degraded"
+        reason = "empty feature partition"
+    elif missing:
+        status = "degraded"
+        reason = "missing analysis columns"
+    elif spec.analysis_columns:
+        ratios = {column: float(frame[column].notna().sum() / len(frame)) for column in spec.analysis_columns}
+        low_columns = [column for column, ratio in ratios.items() if ratio < spec.analysis_min_non_null]
+        if low_columns:
+            status = "degraded"
+            reason = "analysis columns below non-null threshold"
+    return {
+        "status": status,
+        "rows": len(frame),
+        "columns": len(frame.columns),
+        "analysis_columns": list(spec.analysis_columns),
+        "analysis_min_non_null": spec.analysis_min_non_null,
+        "missing_analysis_columns": missing,
+        "non_null_ratios": ratios,
+        "reason": reason,
+    }

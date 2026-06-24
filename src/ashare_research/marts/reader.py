@@ -136,6 +136,7 @@ class MartReader:
             )
 
         missing_columns = tuple(column for column in spec.required_columns if column not in meta.columns)
+        analysis = self._analysis_quality(spec, meta)
         if meta.rows == 0 and spec.empty_policy == "allow_empty":
             status = "ready"
             message = ""
@@ -146,6 +147,9 @@ class MartReader:
         elif meta.rows == 0 and spec.empty_policy == "forbid_empty":
             status = "empty"
             message = "empty partition is forbidden"
+        elif analysis["status"] != "ok":
+            status = "degraded"
+            message = analysis["reason"]
         else:
             status = "ready"
             message = ""
@@ -157,6 +161,17 @@ class MartReader:
             partition=meta.partition,
             rows=meta.rows,
             missing_columns=missing_columns,
+            analysis_columns=tuple(spec.analysis_columns),
+            missing_analysis_columns=tuple(analysis["missing_analysis_columns"]),
+            non_null_ratios=dict(analysis["non_null_ratios"]),
+            quality={
+                "status": analysis["status"],
+                "analysis_columns": list(spec.analysis_columns),
+                "analysis_min_non_null": spec.analysis_min_non_null,
+                "missing_analysis_columns": list(analysis["missing_analysis_columns"]),
+                "non_null_ratios": dict(analysis["non_null_ratios"]),
+                "reason": analysis["reason"],
+            },
             path=str(self.partition_path(dataset, meta.partition)),
             message=message,
         )
@@ -168,13 +183,50 @@ class MartReader:
     def check(self, datasets: list[str] | None = None, as_of: str | None = None) -> dict[str, Any]:
         names = datasets or [spec.name for spec in self.catalog.list()]
         checks = [self.check_dataset(name, as_of=as_of).to_dict() for name in names]
-        status = "ready" if all(check["status"] == "ready" for check in checks) else "blocked"
+        blocking_statuses = {"missing", "schema_mismatch", "empty", "unregistered", "read_error"}
+        if any(check["status"] in blocking_statuses for check in checks):
+            status = "blocked"
+        elif any(check["status"] == "degraded" for check in checks):
+            status = "degraded"
+        else:
+            status = "ready"
         return {
             "schema": "ashare.data_check.v1",
             "status": status,
             "as_of": as_of,
             "datasets": checks,
         }
+
+    def _analysis_quality(self, spec, meta: MartPartitionMeta) -> dict[str, Any]:
+        if not spec.analysis_columns or meta.rows == 0:
+            return {"status": "ok", "reason": "", "missing_analysis_columns": [], "non_null_ratios": {}}
+        missing = [column for column in spec.analysis_columns if column not in meta.columns]
+        if missing:
+            return {
+                "status": "degraded",
+                "reason": "missing analysis columns",
+                "missing_analysis_columns": missing,
+                "non_null_ratios": {},
+            }
+        try:
+            frame = self.read_partition(spec.name, meta.partition, columns=list(spec.analysis_columns))
+        except Exception as error:
+            return {
+                "status": "degraded",
+                "reason": f"analysis quality check failed: {error}",
+                "missing_analysis_columns": [],
+                "non_null_ratios": {},
+            }
+        ratios = {column: float(frame[column].notna().sum() / len(frame)) for column in spec.analysis_columns}
+        low_columns = [column for column, ratio in ratios.items() if ratio < spec.analysis_min_non_null]
+        if low_columns:
+            return {
+                "status": "degraded",
+                "reason": "analysis columns below non-null threshold",
+                "missing_analysis_columns": [],
+                "non_null_ratios": ratios,
+            }
+        return {"status": "ok", "reason": "", "missing_analysis_columns": [], "non_null_ratios": ratios}
 
 
 def _iso_date(value: str) -> str:

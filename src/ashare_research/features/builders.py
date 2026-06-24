@@ -71,6 +71,20 @@ class FeatureBuilder:
     def _build_industry_strength(self, *, as_of: str, window: int) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
         frames: list[pd.DataFrame] = []
         inputs: list[dict[str, Any]] = []
+        sw_members, sw_members_input = self._read_optional_partition(
+            "index_member_all",
+            {"snapshot_date": as_of},
+            columns=["l1_code", "l1_name", "l2_code", "l2_name", "l3_code", "l3_name", "ts_code"],
+        )
+        ci_members, ci_members_input = self._read_optional_partition(
+            "ci_index_member",
+            {"snapshot_date": as_of},
+            columns=["l1_code", "l1_name", "l2_code", "l2_name", "l3_code", "l3_name", "ts_code"],
+        )
+        hierarchy_by_dataset = {
+            "sw_daily": _industry_hierarchy(sw_members),
+            "ci_daily": _industry_hierarchy(ci_members),
+        }
         for dataset in ("sw_daily", "ci_daily"):
             daily = self.mart_reader.read_window(
                 dataset,
@@ -78,8 +92,10 @@ class FeatureBuilder:
                 trade_days=window,
                 columns=None,
             )
-            frames.append(_window_strength(daily, as_of=as_of, window=window, source_dataset=dataset))
+            strength = _window_strength(daily, as_of=as_of, window=window, source_dataset=dataset)
+            frames.append(_attach_industry_hierarchy(strength, hierarchy_by_dataset[dataset]))
             inputs.append(_input_summary(dataset, daily, "trade_date"))
+        inputs.extend([sw_members_input, ci_members_input])
         return pd.concat(frames, ignore_index=True), inputs
 
     def _build_concept_strength(self, *, as_of: str, window: int) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
@@ -166,9 +182,15 @@ class FeatureBuilder:
         moneyflow, moneyflow_input = self._read_optional_window("moneyflow_dc", as_of=as_of, window=window)
         top_list, top_input = self._read_optional_window("top_list", as_of=as_of, window=window)
         limit_ths, limit_input = self._read_optional_window("limit_list_ths", as_of=as_of, window=window)
+        sw_members, sw_members_input = self._read_optional_partition(
+            "index_member_all",
+            {"snapshot_date": as_of},
+            columns=["ts_code", "l1_code", "l1_name", "l2_code", "l2_name", "l3_code", "l3_name"],
+        )
 
         frame = _window_strength(daily, as_of=as_of, window=window, source_dataset="daily")
         frame = _attach_stock_basic(frame, stock_basic)
+        frame = _attach_stock_sw_industry(frame, sw_members)
         frame = _attach_latest_columns(
             frame,
             basic,
@@ -186,6 +208,7 @@ class FeatureBuilder:
             moneyflow_input,
             top_input,
             limit_input,
+            sw_members_input,
         ]
         return frame, inputs
 
@@ -322,6 +345,43 @@ def _window_strength(frame: pd.DataFrame, *, as_of: str, window: int, source_dat
     return pd.DataFrame(rows).sort_values(["strength_score", "window_return_pct"], ascending=[False, False])
 
 
+def _industry_hierarchy(members: pd.DataFrame) -> pd.DataFrame:
+    columns = ["ts_code", "industry_name", "industry_level", "l1", "l2", "l3"]
+    required = {"l1_code", "l1_name", "l2_code", "l2_name", "l3_code", "l3_name"}
+    if members.empty or not required.issubset(set(members.columns)):
+        return pd.DataFrame(columns=columns)
+    rows: list[dict[str, Any]] = []
+    levels = (("l1", "l1_code", "l1_name"), ("l2", "l2_code", "l2_name"), ("l3", "l3_code", "l3_name"))
+    for level, code_column, name_column in levels:
+        subset = members.dropna(subset=[code_column]).drop_duplicates(code_column, keep="last")
+        for _, row in subset.iterrows():
+            rows.append(
+                {
+                    "ts_code": str(row[code_column]),
+                    "industry_name": str(row[name_column]) if pd.notna(row[name_column]) else None,
+                    "industry_level": level.upper(),
+                    "l1": str(row["l1_name"]) if pd.notna(row["l1_name"]) else None,
+                    "l2": str(row["l2_name"]) if level in {"l2", "l3"} and pd.notna(row["l2_name"]) else None,
+                    "l3": str(row["l3_name"]) if level == "l3" and pd.notna(row["l3_name"]) else None,
+                }
+            )
+    return pd.DataFrame(rows, columns=columns).drop_duplicates("ts_code", keep="last")
+
+
+def _attach_industry_hierarchy(frame: pd.DataFrame, hierarchy: pd.DataFrame) -> pd.DataFrame:
+    defaults = {"industry_name": None, "industry_level": None, "l1": None, "l2": None, "l3": None}
+    if frame.empty:
+        return frame
+    if hierarchy.empty or "ts_code" not in hierarchy.columns:
+        return _fill_missing_columns(frame, defaults)
+    addon = hierarchy[["ts_code", "industry_name", "industry_level", "l1", "l2", "l3"]].drop_duplicates("ts_code", keep="last")
+    merged = frame.merge(addon, on="ts_code", how="left")
+    if "name" in merged.columns:
+        merged["name"] = merged["name"].where(merged["name"].notna(), merged["industry_name"])
+    ordered = ["as_of", "window", "source_dataset", "ts_code", "name", "industry_name", "industry_level", "l1", "l2", "l3"]
+    return _frontload_columns(_fill_missing_columns(merged, defaults), ordered)
+
+
 def _strength_score(window_return: float | None, latest_amount: float | None, avg_amount: float | None) -> float | None:
     if window_return is None:
         return None
@@ -407,6 +467,51 @@ def _attach_stock_basic(frame: pd.DataFrame, stock_basic: pd.DataFrame) -> pd.Da
         "list_status",
     ]
     return _frontload_columns(merged, ordered)
+
+
+def _attach_stock_sw_industry(frame: pd.DataFrame, members: pd.DataFrame) -> pd.DataFrame:
+    defaults = {
+        "sw_l1_code": None,
+        "sw_l1_name": None,
+        "sw_l2_code": None,
+        "sw_l2_name": None,
+        "sw_l3_code": None,
+        "sw_l3_name": None,
+    }
+    if frame.empty:
+        return frame
+    required = {"ts_code", "l1_code", "l1_name", "l2_code", "l2_name", "l3_code", "l3_name"}
+    if members.empty or not required.issubset(set(members.columns)):
+        return _fill_missing_columns(frame, defaults)
+    addon = members[["ts_code", "l1_code", "l1_name", "l2_code", "l2_name", "l3_code", "l3_name"]].drop_duplicates(
+        "ts_code",
+        keep="last",
+    )
+    addon = addon.rename(
+        columns={
+            "l1_code": "sw_l1_code",
+            "l1_name": "sw_l1_name",
+            "l2_code": "sw_l2_code",
+            "l2_name": "sw_l2_name",
+            "l3_code": "sw_l3_code",
+            "l3_name": "sw_l3_name",
+        }
+    )
+    merged = frame.merge(addon, on="ts_code", how="left")
+    ordered = [
+        "as_of",
+        "window",
+        "source_dataset",
+        "ts_code",
+        "name",
+        "industry",
+        "sw_l1_name",
+        "sw_l2_name",
+        "sw_l3_name",
+        "market",
+        "list_status",
+    ]
+    return _frontload_columns(_fill_missing_columns(merged, defaults), ordered)
 
 
 def _attach_top_list(frame: pd.DataFrame, top_list: pd.DataFrame) -> pd.DataFrame:

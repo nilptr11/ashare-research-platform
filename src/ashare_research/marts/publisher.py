@@ -70,12 +70,18 @@ class MartPublisher:
 
 
 def _quality_payload(spec: DatasetSpec, frame: pd.DataFrame) -> dict[str, Any]:
+    base = {
+        "empty_policy": spec.empty_policy,
+        "rows": len(frame),
+        "columns": len(frame.columns),
+        "analysis_columns": list(spec.analysis_columns),
+        "analysis_min_non_null": spec.analysis_min_non_null,
+        "missing_analysis_columns": [],
+        "non_null_ratios": {},
+    }
     if len(frame) == 0 and spec.empty_policy == "allow_empty":
-        return {
+        return base | {
             "status": "ok",
-            "empty_policy": spec.empty_policy,
-            "rows": 0,
-            "columns": len(frame.columns),
             "missing_columns": [],
             "reason": "empty_allowed",
         }
@@ -89,11 +95,42 @@ def _quality_payload(spec: DatasetSpec, frame: pd.DataFrame) -> dict[str, Any]:
     else:
         status = "ok"
         reason = ""
-    return {
+
+    analysis = _analysis_quality(spec, frame)
+    if status == "ok" and analysis["status"] != "ok":
+        status = analysis["status"]
+        reason = analysis["reason"]
+
+    return base | {
         "status": status,
-        "empty_policy": spec.empty_policy,
-        "rows": len(frame),
-        "columns": len(frame.columns),
         "missing_columns": missing_columns,
+        "missing_analysis_columns": analysis["missing_analysis_columns"],
+        "non_null_ratios": analysis["non_null_ratios"],
         "reason": reason,
     }
+
+
+def _analysis_quality(spec: DatasetSpec, frame: pd.DataFrame) -> dict[str, Any]:
+    if not spec.analysis_columns or frame.empty:
+        return {"status": "ok", "reason": "", "missing_analysis_columns": [], "non_null_ratios": {}}
+    missing = [column for column in spec.analysis_columns if column not in frame.columns]
+    ratios: dict[str, float] = {}
+    if missing:
+        return {
+            "status": "degraded",
+            "reason": "missing analysis columns",
+            "missing_analysis_columns": missing,
+            "non_null_ratios": ratios,
+        }
+    for column in spec.analysis_columns:
+        ratio = float(frame[column].notna().sum() / len(frame))
+        ratios[column] = ratio
+    low_columns = [column for column, ratio in ratios.items() if ratio < spec.analysis_min_non_null]
+    if low_columns:
+        return {
+            "status": "degraded",
+            "reason": "analysis columns below non-null threshold",
+            "missing_analysis_columns": [],
+            "non_null_ratios": ratios,
+        }
+    return {"status": "ok", "reason": "", "missing_analysis_columns": [], "non_null_ratios": ratios}

@@ -129,6 +129,8 @@ def test_cli_data_build_uses_connector_raw_store_and_publisher(monkeypatch, caps
     payload = json.loads(capsys.readouterr().out)
     assert payload["dataset"] == "daily"
     assert payload["rows"] == 1
+    assert payload["quality_status"] == "ok"
+    assert payload["quality"]["status"] == "ok"
     assert (tmp_path / "mart" / "daily" / "trade_date=20260623" / "part.parquet").exists()
     assert (tmp_path / "raw" / "tushare" / "daily").exists()
 

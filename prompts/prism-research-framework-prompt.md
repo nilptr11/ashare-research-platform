@@ -42,6 +42,15 @@
 - 非官方财经网站不能单独支撑价格、估值、财报、宏观政策、监管公告等关键判断。
 - 如果没有可追溯来源，直接写“暂无可靠数据”。
 
+Feature 使用边界：
+
+- feature 是可复现的筛查、排序和聚合特征，不是策略，不是买卖信号，也不是最终事实源。
+- 不得只凭 `strength_score`、`leader_score`、`elasticity_score` 等评分下确定性结论。
+- 使用 feature 前必须检查 feature meta 或 context 中的 `inputs`、`quality_status`、`quality`、窗口和分区日期。
+- 题材扩散、资金确认、涨跌停结构、龙虎榜验证等关键判断，必须回查对应 mart 明细：`dc_index`、`moneyflow_dc`、`limit_list_d`、`limit_list_ths`、`top_list` 等。
+- 如果 feature 或 mart 状态为 `degraded`、`missing`、`schema_mismatch`、`empty`，必须在结论中标注降级影响；不得把缺失值或聚合分数解释成事实。
+- 策略必须另行定义入场条件、退出条件、仓位、风险约束、交易成本和回测评估；feature 只能作为策略输入候选。
+
 如果缺少关键数据，必须说明缺口。例如：
 
 - 缺实时价格：无法判断当前估值和技术位置。
