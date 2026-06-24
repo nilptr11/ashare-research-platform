@@ -10,9 +10,8 @@ Prefer sources in this order:
 2. Company filings, company investor relations, and earnings-call materials.
 3. Industry associations and designated publishers.
 4. Tender/procurement platforms and public-resource transaction platforms.
-5. Reputable news or data aggregators, only as discovery or low/medium-confidence evidence.
 
-Do not use unverifiable social-media claims. Do not treat news summaries as official facts unless the original source is located and cited.
+Use only source types listed in the output schema. Do not use generic aggregator pages or unverifiable social claims as evidence.
 
 ## Hard Rules
 
@@ -46,7 +45,7 @@ Do not use unverifiable social-media claims. Do not treat news summaries as offi
       "unit": null,
       "period": "date/month/quarter/year/event period",
       "frequency": "daily|weekly|monthly|quarterly|annual|event|unknown",
-      "source_type": "official|exchange|regulator|company_filing|company_ir|association|tender_platform|news|vendor|other",
+      "source_type": "official|exchange|regulator|company_filing|company_ir|association|industry_association|tender_platform|official_platform|gov_policy|price_index|vendor|other",
       "source_name": "Source display name",
       "source_url": "https://...",
       "published_at": "YYYY-MM-DD or best available date",
@@ -79,7 +78,7 @@ Do not use unverifiable social-media claims. Do not treat news summaries as offi
 ## Confidence Guidance
 
 - `high`: official/regulatory/exchange/company-source evidence, or independently cross-verified evidence.
-- `medium`: credible association, platform, or news evidence with clear source attribution but no original official document found.
+- `medium`: credible association, platform, vendor, or non-official primary source evidence with clear attribution.
 - `low`: discovery-only evidence, vendor summaries, aggregator pages, or evidence requiring manual review.
 
 ## Adapter Candidate Guidance

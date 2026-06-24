@@ -2,11 +2,11 @@
 
 本文档用于说明本地 `data/mart/{dataset}` 目录分别代表什么数据，以及维护、验收、分析读取时应该按什么口径理解。
 
-执行口径以 `ashare maintain plan` 生成的 active plan 为准。没有权限、积分不足、单独权限未开通或 smoke 验证失败的接口不会进入维护流程，也不会进入 `check/report/bundle` 的读取计划。本文档描述的是项目支持的基础数据目录，不替代权限过滤结果。
+执行口径以 `ashare daily run/status/report/repair` 和 `ashare data check/build/update` 为准。没有权限、积分不足、单独权限未开通或抓取失败的接口不会被伪装成健康数据；对应分区会在 daily report 或 data check 中体现为缺口、失败或 warning。本文档描述的是项目支持的基础数据目录，不替代实际运行结果。
 
-bundle、research-context、research-summary 和行业证据 prompt 等分析数据输入能力的读取关系见 [分析能力对照表](analysis-capability-catalog.md)。
+context pack、feature、evidence、knowledge 和 run 留痕等分析数据输入能力的读取关系见 [分析能力对照表](analysis-capability-catalog.md)。
 
-日常维护验收默认看最近 30 个交易日和最近 30 个自然日事件分区；基础库本身长期保留，不做 30/60/120 日滚动删除。120 日或更长窗口属于策略分析读取选择，应在 `ashare analysis bundle --trade-days` 中显式指定。
+日常维护默认使用同一个可重入入口，不分收盘版和晚间版。`daily run` 会刷新默认基础库、构建 `5/20/60` feature，并生成 60 个交易日的 market context；基础库本身长期保留，不做 30/60/120 日滚动删除。更长窗口属于分析读取选择，可在 context 或 feature 构建时显式指定。
 
 ## 维护与验收口径
 
@@ -14,7 +14,7 @@ bundle、research-context、research-summary 和行业证据 prompt 等分析数
 | --- | --- | --- |
 | 连续交易日窗口 | 日线行情、日指标、复权因子、涨跌停价、指数、行业、普通资金流、龙虎榜、融资融券 | 最近 30 个交易日；可用 `--trade-days` 调整 |
 | 目标日/最新分区 | 题材成分映射、热榜、北向相关信号、股票池筹码数据 | 只验收目标日或最新快照，不强制连续历史窗口 |
-| 自然日事件窗口 | 公告、业绩预告、新闻快讯 | 最近 30 个自然日；新闻只代表当前可见快讯快照 |
+| 自然日事件窗口 | 公告、业绩预告 | 最近 30 个自然日；允许健康空分区 |
 | 显式股票池报告期 | 利润表、资产负债表、现金流、业绩快报、财务指标、主营、分红、审计意见 | 不按交易日窗口验收；检查已落库报告期和股票池覆盖 |
 
 ## 核心行情与市场环境
@@ -73,15 +73,12 @@ bundle、research-context、research-summary 和行业证据 prompt 等分析数
 
 这些表是“产业链/题材 -> 成分股 -> 高弹性候选”的基础维表，不是策略筛票结果。策略层应该基于这些维表另行输出候选池、排序和解释。
 
-## 事件、公告与新闻
+## 事件与公告
 
 | 数据层 | mart dataset | 接口/来源 | profile | 分区与验收 | 代表数据 |
 | --- | --- | --- | --- | --- | --- |
 | A 股公告 | `a_stock_notice` | project builtin / AKShare | standard | `publish_date=YYYY-MM-DD`；自然日事件窗口，允许健康空分区 | 风险提示、重组、订单、减持、药品批准等 |
 | 业绩预告 | `earnings_forecast` | project builtin / AKShare | standard | `publish_date=YYYY-MM-DD`；自然日事件窗口，允许健康空分区 | 业绩弹性、预增、扭亏、预亏 |
-| 新闻快讯 | `event_news` | project builtin / Tushare 资讯页 | full | `news_date=YYYY-MM-DD`；只检查最近可见快讯快照 | 政策、产业、公司催化 |
-
-`event_news` 不是历史新闻 API，不承诺补齐长历史。它适合做当日或近期资讯证据，不适合当成可回测的历史新闻库。
 
 ## 股票池增强数据
 
@@ -106,14 +103,16 @@ bundle、research-context、research-summary 和行业证据 prompt 等分析数
 | 财务审计意见 | `fina_audit` | Tushare `fina_audit` | full | `period=YYYYMMDD`；需要 `--include-financials` 和显式股票池 | 审计意见、风险排雷 |
 | 财报披露日期 | `disclosure_date` | Tushare `disclosure_date` | full | `period=YYYYMMDD`；不需要股票池 | 财报预约披露、实际披露日期 |
 
-财务重表不进入默认全市场日扫。推荐按公告披露日、候选池、重点行业或明确股票池做增量维护；只有显式传 `--all-stocks-financials` 时才允许全市场财务回填。`maintain check/report` 会输出财务分区的股票池观测覆盖率，用于复盘本次请求股票池和实际返回股票数；业绩快报、分红、审计意见等天然稀疏表不会因为覆盖不足自动判定维护失败。
+财务重表不进入默认全市场日扫。推荐按公告披露日、候选池、重点行业或明确股票池做增量维护。业绩快报、分红、审计意见等天然稀疏表不会因为覆盖不足自动判定默认 daily 失败。
 
 ## 读取建议
 
 | 场景 | 推荐读取方式 |
 | --- | --- |
-| 每日维护是否健康 | `ashare maintain report --end-date YYYYMMDD --profile full --trade-days 30 --event-days 30` |
-| 全市场短线/题材分析 | `ashare analysis bundle --as-of YYYYMMDD --profile full --trade-days 30` 或 `60` |
-| 趋势、量价结构、风格回看 | `ashare analysis bundle --as-of YYYYMMDD --profile full --trade-days 120` 或策略指定窗口 |
-| 个股或候选池财务验证 | 先用 `maintain daily/backfill --group financials --include-financials --stock ...` 落库，再用 bundle 或直接读 mart |
+| 每日维护是否健康 | `ashare daily status --as-of YYYYMMDD` 或 `ashare daily report --as-of YYYYMMDD` |
+| 每日完整更新 | `ashare daily run --as-of YYYYMMDD` |
+| 缺口修复 | `ashare daily repair --as-of YYYYMMDD` |
+| 全市场短线/题材分析 | 先读 `market_structure` context，再按需要读取 mart/feature |
+| 趋势、量价结构、风格回看 | `ashare context build market-structure --as-of YYYYMMDD --trade-days 120` 或用户框架指定窗口 |
+| 个股或候选池财务验证 | 先按明确股票池和报告期补相应财务 mart，再读 stock context 或 mart |
 | 精确表级排查 | 直接读 `data/mart/{dataset}/{partition_key}=.../part.parquet` 和旁边的 `_meta.json` |

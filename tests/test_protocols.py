@@ -1,0 +1,51 @@
+import json
+
+from ashare_research.cli import main
+from ashare_research.protocols import ProtocolRegistry
+
+
+def test_builtin_protocol_registry_loads_market_structure():
+    registry = ProtocolRegistry.builtin()
+    spec = registry.require("market_structure.v1")
+
+    assert spec.title == "市场结构分析"
+    assert "market_structure" in spec.required_contexts
+    assert "gap_gate" in spec.quality_gates
+
+
+def test_protocol_registry_validate():
+    payload = ProtocolRegistry.builtin().validate("market_structure.v1")
+
+    assert payload["status"] == "ready"
+    assert payload["protocols"][0]["protocol_id"] == "market_structure.v1"
+    assert payload["protocols"][0]["output_schema_status"] == "ready"
+
+
+def test_protocol_registry_loads_output_schema():
+    registry = ProtocolRegistry.builtin()
+    schema = registry.output_schema("ashare.protocol_output.market_structure.v1")
+
+    assert schema["$id"] == "ashare.protocol_output.market_structure.v1"
+    assert "era_direction" in schema["properties"]
+
+
+def test_cli_protocols_list_show_validate(capsys):
+    exit_code = main(["protocols", "list", "--format", "json"])
+    assert exit_code == 0
+    list_payload = json.loads(capsys.readouterr().out)
+    assert list_payload[0]["protocol_id"] == "market_structure.v1"
+
+    exit_code = main(["protocols", "show", "market_structure.v1"])
+    assert exit_code == 0
+    show_payload = json.loads(capsys.readouterr().out)
+    assert show_payload["output_schema"] == "ashare.protocol_output.market_structure.v1"
+
+    exit_code = main(["protocols", "validate", "market_structure.v1"])
+    assert exit_code == 0
+    validate_payload = json.loads(capsys.readouterr().out)
+    assert validate_payload["status"] == "ready"
+
+    exit_code = main(["protocols", "output-schema", "market_structure.v1"])
+    assert exit_code == 0
+    schema_payload = json.loads(capsys.readouterr().out)
+    assert schema_payload["$id"] == "ashare.protocol_output.market_structure.v1"

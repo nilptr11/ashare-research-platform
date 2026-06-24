@@ -143,7 +143,7 @@
       "source_id": "auto_stats_statistics",
       "name": "Auto Statistics Information Network",
       "domain": "auto-stats.org.cn",
-      "source_type": "association_or_designated_publisher",
+      "source_type": "industry_association",
       "data_types": ["automotive_sales", "nev_sales", "production"],
       "industries": ["automotive", "lithium_battery"],
       "access_method": "html_article",

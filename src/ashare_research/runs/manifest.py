@@ -1,0 +1,53 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+
+@dataclass(frozen=True)
+class RunArtifact:
+    path: str
+    sha256: str | None
+    kind: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "path": self.path,
+            "sha256": self.sha256,
+        }
+
+
+@dataclass(frozen=True)
+class RunManifest:
+    run_id: str
+    created_at: str
+    as_of: str
+    protocol_id: str
+    protocol_version: str
+    question: RunArtifact
+    protocol: RunArtifact
+    context_packs: tuple[RunArtifact, ...] = ()
+    evidence: RunArtifact | None = None
+    knowledge: RunArtifact | None = None
+    model: dict[str, Any] = field(default_factory=dict)
+    quality_gates: dict[str, Any] = field(default_factory=dict)
+    outputs: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": "ashare.run_manifest.v1",
+            "run_id": self.run_id,
+            "created_at": self.created_at,
+            "as_of": self.as_of,
+            "protocol_id": self.protocol_id,
+            "protocol_version": self.protocol_version,
+            "question": self.question.to_dict(),
+            "protocol": self.protocol.to_dict(),
+            "context_packs": [artifact.to_dict() for artifact in self.context_packs],
+            "evidence": self.evidence.to_dict() if self.evidence else None,
+            "knowledge": self.knowledge.to_dict() if self.knowledge else None,
+            "model": dict(self.model),
+            "quality_gates": dict(self.quality_gates),
+            "outputs": dict(self.outputs),
+        }

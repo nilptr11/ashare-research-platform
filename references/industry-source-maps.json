@@ -42,7 +42,7 @@
           "metric_id": "optical_module_order_signal",
           "topic": "order",
           "frequency": "event",
-          "primary_sources": ["company_filing", "company_ir", "credible_news"],
+          "primary_sources": ["company_filing", "company_ir", "official_interaction_platform", "tender_platform"],
           "prompt_role": "Find supplier-level order, backlog, customer concentration, or demand commentary.",
           "adapter_candidate": false,
           "adapter_priority": "P2",
@@ -100,7 +100,7 @@
         {
           "missing": "Supplier-specific optical-module and server order values",
           "reason": "non_standard_disclosure",
-          "suggested_source": "Supplier filings, IR transcripts, tender notices, and credible supply-chain news."
+          "suggested_source": "Supplier filings, IR transcripts, tender notices, and official interaction platforms."
         }
       ]
     },
@@ -186,11 +186,11 @@
           "why_it_matters": "Supports unit normalization for price and inventory evidence."
         },
         {
-          "claim": "A media repost of power-battery alliance data reported May 2026 domestic power-battery installation of 71.9 GWh, up 25.9% year over year and 15.2% month over month.",
-          "source_name": "Sohu repost of power-battery alliance data",
-          "source_url": "https://www.sohu.com/a/1035116702_114986",
-          "confidence": "medium",
-          "why_it_matters": "Demand-side improvement signal, but original source should be located before production use."
+          "claim": "Power-battery installation data requires an original association or official-platform source before it can support production evidence.",
+          "source_name": "Original source required",
+          "source_url": "",
+          "confidence": "low",
+          "why_it_matters": "Demand-side improvement can be important, but reposted values are not accepted as evidence."
         },
         {
           "claim": "Auto Statistics Information Network published April 2026 NEV production and sales totals and year-to-date totals.",

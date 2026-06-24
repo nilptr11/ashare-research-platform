@@ -1,0 +1,735 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Iterable
+
+from ..schemas import DatasetContractError, DatasetSpec
+
+
+def _spec(
+    name: str,
+    title: str,
+    source_api: str,
+    partition_keys: tuple[str, ...],
+    primary_key: tuple[str, ...],
+    required_columns: tuple[str, ...],
+    *,
+    source: str = "tushare",
+    units: dict[str, str] | None = None,
+    empty_policy: str = "forbid_empty",
+    default_fields: tuple[str, ...] | None = None,
+    source_variants: tuple[dict[str, Any], ...] = (),
+    group: str = "",
+    min_profile: str = "basic",
+    maintenance_kind: str | None = None,
+    date_param: str | None = None,
+    page_limit: int | None = None,
+    max_pages: int = 20,
+    requires_stock_pool: bool = False,
+    driver_dataset: str | None = None,
+    driver_code_param: str = "ts_code",
+    driver_code_columns: tuple[str, ...] = ("ts_code", "index_code", "code"),
+    driver_name_columns: tuple[str, ...] = ("name", "index_name", "industry_name", "concept_name"),
+    range_lookback_days: int = 370,
+) -> DatasetSpec:
+    resolved_maintenance_kind = maintenance_kind or _maintenance_kind_for(partition_keys)
+    return DatasetSpec(
+        name=name,
+        title=title,
+        source=source,
+        source_api=source_api,
+        partition_keys=partition_keys,
+        primary_key=primary_key,
+        required_columns=required_columns,
+        units=units or {},
+        empty_policy=empty_policy,
+        default_fields=required_columns if default_fields is None else default_fields,
+        source_variants=source_variants,
+        group=group,
+        min_profile=min_profile,
+        maintenance_kind=resolved_maintenance_kind,
+        date_param=date_param if date_param is not None else _date_param_for(resolved_maintenance_kind, partition_keys),
+        page_limit=page_limit,
+        max_pages=max_pages,
+        requires_stock_pool=requires_stock_pool,
+        driver_dataset=driver_dataset,
+        driver_code_param=driver_code_param,
+        driver_code_columns=driver_code_columns,
+        driver_name_columns=driver_name_columns,
+        range_lookback_days=range_lookback_days,
+    )
+
+
+def _maintenance_kind_for(partition_keys: tuple[str, ...]) -> str:
+    if "exchange" in partition_keys:
+        return "calendar"
+    if "snapshot_date" in partition_keys:
+        return "snapshot"
+    if "period" in partition_keys:
+        return "stock_pool_financial"
+    return "trade_date"
+
+
+def _date_param_for(maintenance_kind: str, partition_keys: tuple[str, ...]) -> str | None:
+    if maintenance_kind in {"snapshot", "calendar"}:
+        return None
+    if "trade_date" in partition_keys:
+        return "trade_date"
+    if "publish_date" in partition_keys:
+        return "publish_date"
+    if "period" in partition_keys:
+        return "period"
+    return None
+
+
+def _variant(label: str, params: dict[str, Any], fields: tuple[str, ...] | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {"label": label, "params": dict(params)}
+    if fields is not None:
+        payload["fields"] = list(fields)
+    return payload
+
+
+def default_dataset_specs() -> list[DatasetSpec]:
+    """Return the first explicit contracts for the research data kernel."""
+    specs = [
+        _spec(
+            "trade_cal",
+            "交易日历",
+            "trade_cal",
+            ("exchange",),
+            ("exchange", "cal_date"),
+            ("exchange", "cal_date", "is_open"),
+            group="calendar",
+        ),
+        _spec(
+            "stock_basic",
+            "A 股基础信息",
+            "stock_basic",
+            ("snapshot_date",),
+            ("snapshot_date", "ts_code"),
+            ("ts_code", "symbol", "name", "market", "list_status"),
+            default_fields=("ts_code", "symbol", "name", "area", "industry", "market", "list_date", "list_status"),
+            group="identity",
+        ),
+        _spec(
+            "daily",
+            "A 股日线行情",
+            "daily",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date", "open", "high", "low", "close", "pct_chg", "vol", "amount"),
+            units={"vol": "手", "amount": "千元"},
+            default_fields=("ts_code", "trade_date", "open", "high", "low", "close", "pre_close", "change", "pct_chg", "vol", "amount"),
+            group="stock_daily",
+        ),
+        _spec(
+            "daily_basic",
+            "A 股日线基础指标",
+            "daily_basic",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date", "close", "turnover_rate", "volume_ratio", "total_mv", "circ_mv"),
+            units={"total_mv": "万元", "circ_mv": "万元"},
+            default_fields=(
+                "ts_code",
+                "trade_date",
+                "close",
+                "turnover_rate",
+                "turnover_rate_f",
+                "volume_ratio",
+                "pe",
+                "pe_ttm",
+                "pb",
+                "ps",
+                "ps_ttm",
+                "dv_ratio",
+                "dv_ttm",
+                "total_share",
+                "float_share",
+                "free_share",
+                "total_mv",
+                "circ_mv",
+            ),
+            group="stock_daily",
+        ),
+        _spec(
+            "index_daily",
+            "指数日线行情",
+            "index_daily",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date", "close", "pct_chg", "vol", "amount"),
+            units={"vol": "手", "amount": "千元"},
+            default_fields=("ts_code", "trade_date", "close", "open", "high", "low", "pre_close", "change", "pct_chg", "vol", "amount"),
+            source_variants=(
+                _variant("sh", {"ts_code": "000001.SH"}),
+                _variant("hs300", {"ts_code": "000300.SH"}),
+                _variant("zz500", {"ts_code": "000905.SH"}),
+                _variant("zz1000", {"ts_code": "000852.SH"}),
+                _variant("sz", {"ts_code": "399001.SZ"}),
+                _variant("cyb", {"ts_code": "399006.SZ"}),
+            ),
+            group="index",
+        ),
+        _spec(
+            "index_dailybasic",
+            "指数日线估值和成交",
+            "index_dailybasic",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date"),
+            default_fields=("ts_code", "trade_date", "total_mv", "float_mv", "total_share", "float_share", "free_share", "turnover_rate", "turnover_rate_f", "pe", "pe_ttm", "pb"),
+            group="index",
+        ),
+        _spec(
+            "sw_daily",
+            "申万行业日线",
+            "sw_daily",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date", "close", "pct_change"),
+            units={"vol": "手", "amount": "千元"},
+            group="industry",
+        ),
+        _spec(
+            "ci_daily",
+            "中信行业日线",
+            "ci_daily",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date", "close"),
+            units={"vol": "手", "amount": "千元"},
+            group="industry",
+        ),
+        _spec(
+            "ths_index",
+            "同花顺概念指数清单",
+            "ths_index",
+            ("snapshot_date",),
+            ("snapshot_date", "ts_code"),
+            ("ts_code", "name", "exchange", "type"),
+            default_fields=("ts_code", "name", "count", "exchange", "list_date", "type"),
+            group="membership",
+            min_profile="full",
+        ),
+        _spec(
+            "dc_index",
+            "东方财富概念指数",
+            "dc_index",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date"),
+            source_variants=(
+                _variant("industry", {"idx_type": "行业板块"}),
+                _variant("concept", {"idx_type": "概念板块"}),
+                _variant("region", {"idx_type": "地域板块"}),
+            ),
+            group="membership",
+            min_profile="full",
+        ),
+        _spec(
+            "limit_list_d",
+            "涨跌停明细",
+            "limit_list_d",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date"),
+            empty_policy="allow_empty",
+            group="short_term",
+            min_profile="full",
+        ),
+        _spec(
+            "limit_list_ths",
+            "同花顺涨停池",
+            "limit_list_ths",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date"),
+            empty_policy="allow_empty",
+            group="short_term",
+            min_profile="full",
+        ),
+        _spec(
+            "top_list",
+            "龙虎榜",
+            "top_list",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date"),
+            empty_policy="allow_empty",
+            group="short_term",
+            min_profile="standard",
+        ),
+        _spec(
+            "moneyflow_dc",
+            "东方财富个股资金流",
+            "moneyflow_dc",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date"),
+            empty_policy="allow_empty",
+            group="moneyflow",
+            min_profile="standard",
+            page_limit=5000,
+            max_pages=3,
+        ),
+    ]
+    specs.extend(_legacy_dataset_specs())
+    return specs
+
+
+def _legacy_dataset_specs() -> list[DatasetSpec]:
+    """Dataset contracts restored from the pre-refactor maintenance registry."""
+    return [
+        _spec(
+            "stock_hsgt",
+            "沪深港通标的",
+            "stock_hsgt",
+            ("trade_date",),
+            ("trade_date", "ts_code", "_variant"),
+            ("ts_code", "trade_date"),
+            source_variants=(_variant("hk_sh", {"type": "HK_SH"}), _variant("hk_sz", {"type": "HK_SZ"})),
+            group="northbound",
+            min_profile="standard",
+        ),
+        _spec(
+            "index_classify",
+            "申万行业分类",
+            "index_classify",
+            ("snapshot_date",),
+            ("snapshot_date", "index_code", "_variant"),
+            ("index_code", "industry_name", "level", "src"),
+            source_variants=(
+                _variant("l1", {"level": "L1", "src": "SW2021"}),
+                _variant("l2", {"level": "L2", "src": "SW2021"}),
+                _variant("l3", {"level": "L3", "src": "SW2021"}),
+            ),
+            group="membership",
+            min_profile="standard",
+        ),
+        _spec(
+            "index_member_all",
+            "指数成分全集",
+            "index_member_all",
+            ("snapshot_date",),
+            ("snapshot_date", "l3_code", "ts_code"),
+            ("l1_code", "l2_code", "l3_code", "ts_code"),
+            default_fields=("l1_code", "l1_name", "l2_code", "l2_name", "l3_code", "l3_name", "ts_code", "name", "in_date", "out_date", "is_new"),
+            group="membership",
+            min_profile="standard",
+            page_limit=3000,
+            max_pages=3,
+        ),
+        _spec(
+            "ci_index_member",
+            "中信行业成分",
+            "ci_index_member",
+            ("snapshot_date",),
+            ("snapshot_date", "l3_code", "ts_code"),
+            ("l1_code", "l2_code", "l3_code", "ts_code"),
+            default_fields=("l1_code", "l1_name", "l2_code", "l2_name", "l3_code", "l3_name", "ts_code", "name", "in_date", "out_date", "is_new"),
+            group="membership",
+            min_profile="full",
+            page_limit=5000,
+            max_pages=2,
+        ),
+        _spec(
+            "ths_member",
+            "同花顺指数成分",
+            "ths_member",
+            ("snapshot_date",),
+            ("snapshot_date", "_driver_ts_code", "ts_code"),
+            ("ts_code",),
+            group="membership",
+            min_profile="full",
+            maintenance_kind="member_by_index_snapshot",
+            driver_dataset="ths_index",
+            page_limit=5000,
+            max_pages=60,
+        ),
+        _spec(
+            "dc_member",
+            "东方财富板块成分",
+            "dc_member",
+            ("trade_date",),
+            ("trade_date", "_driver_ts_code", "ts_code"),
+            ("ts_code",),
+            empty_policy="allow_empty",
+            group="membership",
+            min_profile="full",
+            maintenance_kind="member_by_index_trade_date",
+            driver_dataset="dc_index",
+            page_limit=5000,
+            max_pages=20,
+        ),
+        _spec(
+            "tdx_index",
+            "通达信板块指数",
+            "tdx_index",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date"),
+            empty_policy="allow_empty",
+            group="membership",
+            min_profile="full",
+            page_limit=1000,
+            max_pages=5,
+        ),
+        _spec(
+            "tdx_member",
+            "通达信板块成分",
+            "tdx_member",
+            ("trade_date",),
+            ("trade_date", "_driver_ts_code", "ts_code"),
+            ("ts_code",),
+            empty_policy="allow_empty",
+            group="membership",
+            min_profile="full",
+            maintenance_kind="member_by_index_trade_date",
+            driver_dataset="tdx_index",
+            page_limit=3000,
+            max_pages=35,
+        ),
+        _spec(
+            "kpl_concept_cons",
+            "开盘啦题材成分",
+            "kpl_concept_cons",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date"),
+            empty_policy="allow_empty",
+            group="membership",
+            min_profile="full",
+            page_limit=5000,
+            max_pages=10,
+        ),
+        _spec(
+            "index_weight",
+            "核心指数权重",
+            "index_weight",
+            ("snapshot_date",),
+            ("snapshot_date", "index_code", "con_code", "_variant"),
+            ("index_code", "con_code"),
+            source_variants=(
+                _variant("sz50", {"index_code": "000016.SH"}),
+                _variant("hs300", {"index_code": "000300.SH"}),
+                _variant("zz500", {"index_code": "000905.SH"}),
+                _variant("zz1000", {"index_code": "000852.SH"}),
+            ),
+            group="membership",
+            min_profile="standard",
+        ),
+        _spec(
+            "adj_factor",
+            "复权因子",
+            "adj_factor",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date", "adj_factor"),
+            default_fields=("ts_code", "trade_date", "adj_factor"),
+            group="stock_daily",
+        ),
+        _spec(
+            "stk_limit",
+            "涨跌停价格",
+            "stk_limit",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date", "up_limit", "down_limit"),
+            default_fields=("ts_code", "trade_date", "up_limit", "down_limit"),
+            group="stock_daily",
+        ),
+        _spec(
+            "moneyflow",
+            "个股资金流",
+            "moneyflow",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date"),
+            group="moneyflow",
+            min_profile="standard",
+            page_limit=5000,
+            max_pages=3,
+        ),
+        _spec(
+            "moneyflow_ths",
+            "同花顺个股资金流",
+            "moneyflow_ths",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date"),
+            group="moneyflow",
+            min_profile="standard",
+        ),
+        _spec(
+            "moneyflow_ind_ths",
+            "同花顺行业资金流",
+            "moneyflow_ind_ths",
+            ("trade_date",),
+            ("trade_date",),
+            ("trade_date",),
+            group="moneyflow",
+            min_profile="standard",
+        ),
+        _spec(
+            "moneyflow_ind_dc",
+            "东方财富行业资金流",
+            "moneyflow_ind_dc",
+            ("trade_date",),
+            ("trade_date",),
+            ("trade_date",),
+            group="moneyflow",
+            min_profile="standard",
+        ),
+        _spec(
+            "moneyflow_cnt_ths",
+            "同花顺概念资金流",
+            "moneyflow_cnt_ths",
+            ("trade_date",),
+            ("trade_date",),
+            ("trade_date",),
+            group="moneyflow",
+            min_profile="standard",
+        ),
+        _spec(
+            "moneyflow_hsgt",
+            "沪深港通资金流",
+            "moneyflow_hsgt",
+            ("trade_date",),
+            ("trade_date",),
+            ("trade_date",),
+            empty_policy="allow_empty",
+            group="northbound",
+            min_profile="standard",
+        ),
+        _spec(
+            "hsgt_top10",
+            "沪深股通十大成交股",
+            "hsgt_top10",
+            ("trade_date",),
+            ("trade_date", "ts_code", "_variant"),
+            ("ts_code", "trade_date"),
+            source_variants=(_variant("hgt", {"market_type": "1"}), _variant("sgt", {"market_type": "3"})),
+            empty_policy="allow_empty",
+            group="northbound",
+            min_profile="standard",
+        ),
+        _spec(
+            "margin_detail",
+            "融资融券明细",
+            "margin_detail",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date"),
+            empty_policy="allow_empty",
+            group="leverage",
+            min_profile="standard",
+        ),
+        _spec(
+            "ths_hot",
+            "同花顺热榜",
+            "ths_hot",
+            ("trade_date",),
+            ("trade_date", "ts_code", "_variant"),
+            ("ts_code", "trade_date"),
+            source_variants=(_variant("hot_stock", {"market": "热股"}), _variant("concept", {"market": "概念板块"})),
+            empty_policy="allow_empty",
+            group="hot_rank",
+            min_profile="full",
+        ),
+        _spec(
+            "dc_hot",
+            "东方财富热榜",
+            "dc_hot",
+            ("trade_date",),
+            ("trade_date", "ts_code", "_variant"),
+            ("ts_code", "trade_date"),
+            source_variants=(
+                _variant("popularity", {"hot_type": "人气榜", "market": "A股市场"}),
+                _variant("rising", {"hot_type": "飙升榜", "market": "A股市场"}),
+            ),
+            empty_policy="allow_empty",
+            group="hot_rank",
+            min_profile="full",
+        ),
+        _spec(
+            "limit_step",
+            "连板梯队",
+            "limit_step",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date"),
+            empty_policy="allow_empty",
+            group="short_term",
+            min_profile="full",
+        ),
+        _spec(
+            "limit_cpt_list",
+            "涨停概念题材",
+            "limit_cpt_list",
+            ("trade_date",),
+            ("trade_date",),
+            ("trade_date",),
+            empty_policy="allow_empty",
+            group="short_term",
+            min_profile="full",
+        ),
+        _spec(
+            "kpl_list",
+            "开盘啦涨停池",
+            "kpl_list",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date"),
+            empty_policy="allow_empty",
+            group="short_term",
+            min_profile="full",
+        ),
+        _spec(
+            "cyq_perf",
+            "筹码分布表现",
+            "cyq_perf",
+            ("trade_date",),
+            ("trade_date", "ts_code"),
+            ("ts_code", "trade_date"),
+            empty_policy="allow_empty",
+            group="chips",
+            min_profile="full",
+            maintenance_kind="stock_pool_daily",
+            requires_stock_pool=True,
+        ),
+        _spec(
+            "cyq_chips",
+            "筹码分布明细",
+            "cyq_chips",
+            ("trade_date",),
+            ("trade_date", "ts_code", "price"),
+            ("ts_code", "trade_date", "price", "percent"),
+            empty_policy="allow_empty",
+            group="chips",
+            min_profile="full",
+            maintenance_kind="stock_pool_daily",
+            requires_stock_pool=True,
+        ),
+        *[
+            _spec(
+                name,
+                title,
+                name,
+                ("period",),
+                ("period", "ts_code"),
+                ("ts_code",),
+                empty_policy="allow_empty",
+                group="financials",
+                min_profile="full",
+                maintenance_kind="stock_pool_financial",
+                requires_stock_pool=True,
+                default_fields=(),
+            )
+            for name, title in (
+                ("income", "利润表"),
+                ("balancesheet", "资产负债表"),
+                ("cashflow", "现金流量表"),
+                ("express", "业绩快报"),
+                ("fina_indicator", "财务指标"),
+                ("dividend", "分红送股"),
+                ("fina_audit", "审计意见"),
+            )
+        ],
+        _spec(
+            "fina_mainbz",
+            "主营业务构成",
+            "fina_mainbz",
+            ("period",),
+            ("period", "ts_code", "_variant"),
+            ("ts_code",),
+            source_variants=(_variant("product", {"type": "P"}), _variant("district", {"type": "D"})),
+            empty_policy="allow_empty",
+            group="financials",
+            min_profile="full",
+            maintenance_kind="stock_pool_financial",
+            requires_stock_pool=True,
+            default_fields=(),
+        ),
+        _spec(
+            "disclosure_date",
+            "财报披露日期",
+            "disclosure_date",
+            ("period",),
+            ("period", "ts_code"),
+            ("ts_code", "end_date"),
+            empty_policy="allow_empty",
+            group="financials",
+            min_profile="full",
+            maintenance_kind="financial_disclosure_date",
+        ),
+        _spec(
+            "a_stock_notice",
+            "A 股公告",
+            "a_stock_notice",
+            ("publish_date",),
+            ("publish_date", "id"),
+            ("publish_date",),
+            source="project_builtin",
+            empty_policy="allow_empty",
+            group="events",
+            min_profile="standard",
+            maintenance_kind="akshare_notice",
+        ),
+        _spec(
+            "earnings_forecast",
+            "业绩预告",
+            "earnings_forecast",
+            ("publish_date",),
+            ("publish_date", "id"),
+            ("publish_date",),
+            source="project_builtin",
+            empty_policy="allow_empty",
+            group="events",
+            min_profile="standard",
+            maintenance_kind="akshare_forecast",
+        ),
+    ]
+
+
+class DatasetCatalog:
+    def __init__(self, specs: Iterable[DatasetSpec]) -> None:
+        self._specs = {spec.name: spec for spec in specs}
+
+    @classmethod
+    def builtin(cls) -> "DatasetCatalog":
+        return cls(default_dataset_specs())
+
+    def __contains__(self, name: str) -> bool:
+        return name in self._specs
+
+    def get(self, name: str) -> DatasetSpec | None:
+        return self._specs.get(name)
+
+    def require(self, name: str) -> DatasetSpec:
+        spec = self.get(name)
+        if spec is None:
+            raise DatasetContractError(f"{name!r} is not registered in DatasetCatalog")
+        return spec
+
+    def list(self) -> list[DatasetSpec]:
+        return [self._specs[name] for name in sorted(self._specs)]
+
+    def discover(self, mart_root: Path) -> list[dict[str, object]]:
+        physical = sorted(path.name for path in mart_root.iterdir() if path.is_dir()) if mart_root.exists() else []
+        names = sorted(set(physical) | set(self._specs))
+        rows: list[dict[str, object]] = []
+        for name in names:
+            spec = self._specs.get(name)
+            rows.append(
+                {
+                    "name": name,
+                    "registered": spec is not None,
+                    "title": spec.title if spec else "",
+                    "source": spec.source if spec else "",
+                    "source_api": spec.source_api if spec else "",
+                    "partition_keys": list(spec.partition_keys) if spec else [],
+                    "has_mart": name in physical,
+                }
+            )
+        return rows

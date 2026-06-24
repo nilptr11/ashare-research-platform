@@ -1,0 +1,351 @@
+import json
+
+import pandas as pd
+
+from ashare_research.cli import main
+from ashare_research.connectors import TushareConnector
+from ashare_research.connectors.tushare import configure_tushare_proxy
+from ashare_research.datasets.catalog import DatasetCatalog
+from ashare_research.marts.publisher import MartPublisher
+from ashare_research.marts.reader import MartReader
+from ashare_research.raw_store import RawStore
+
+
+class FakeTushareClient:
+    def __init__(self, frame):
+        self.frame = frame
+        self.calls = []
+
+    def query(self, api_name, fields=None, **params):
+        self.calls.append({"api_name": api_name, "fields": fields, "params": params})
+        return self.frame
+
+
+def test_tushare_connector_fetches_dataframe_with_metadata():
+    frame = pd.DataFrame([{"ts_code": "000001.SZ", "trade_date": "20260623", "close": 10.0}])
+    client = FakeTushareClient(frame)
+
+    response = TushareConnector(client=client).fetch("daily", {"trade_date": "20260623"}, fields=["ts_code", "close"])
+
+    assert response.source == "tushare"
+    assert response.api_name == "daily"
+    assert response.rows == 1
+    assert response.fields == ("ts_code", "close")
+    assert client.calls[0]["fields"] == "ts_code,close"
+
+
+def test_configure_tushare_proxy_updates_sdk_endpoint():
+    from tushare.pro import client as ts_client
+
+    original_url = ts_client.DataApi._DataApi__http_url
+    proxy_url = "https://proxy.example.com/tushare"
+
+    try:
+        configure_tushare_proxy(proxy_url)
+
+        assert ts_client.DataApi._DataApi__http_url == proxy_url
+
+        configure_tushare_proxy(None)
+
+        assert ts_client.DataApi._DataApi__http_url == original_url
+    finally:
+        ts_client.DataApi._DataApi__http_url = original_url
+
+
+def test_raw_store_and_mart_publisher_write_lineage(tmp_path):
+    frame = pd.DataFrame(
+        [
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "20260623",
+                "open": 10.0,
+                "high": 11.0,
+                "low": 9.0,
+                "close": 10.5,
+                "pct_chg": 1.0,
+                "vol": 100.0,
+                "amount": 1000.0,
+            }
+        ]
+    )
+    response = TushareConnector(client=FakeTushareClient(frame)).fetch("daily", {"trade_date": "20260623"})
+
+    raw_path = RawStore(tmp_path).write_response(response)
+    mart_path = MartPublisher(tmp_path, DatasetCatalog.builtin()).publish(
+        "daily",
+        response.frame,
+        partition={"trade_date": "20260623"},
+        source={"kind": "tushare", "api_name": "daily", "raw_path": str(raw_path)},
+    )
+
+    assert (raw_path / "request.json").exists()
+    assert (raw_path / "response.jsonl").exists()
+    meta = json.loads((mart_path / "_meta.json").read_text(encoding="utf-8"))
+    assert meta["quality_status"] == "ok"
+    assert meta["source"]["raw_path"] == str(raw_path)
+
+
+def test_cli_data_build_uses_connector_raw_store_and_publisher(monkeypatch, capsys, tmp_path):
+    frame = pd.DataFrame(
+        [
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "20260623",
+                "open": 10.0,
+                "high": 11.0,
+                "low": 9.0,
+                "close": 10.5,
+                "pre_close": 10.0,
+                "change": 0.5,
+                "pct_chg": 5.0,
+                "vol": 100.0,
+                "amount": 1000.0,
+            }
+        ]
+    )
+
+    class FakeConnector:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def fetch(self, api_name, params, fields=None):
+            return TushareConnector(client=FakeTushareClient(frame)).fetch(api_name, params, fields)
+
+    monkeypatch.setattr("ashare_research.cli.TushareConnector", FakeConnector)
+
+    exit_code = main(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "data",
+            "build",
+            "daily",
+            "--trade-date",
+            "20260623",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["dataset"] == "daily"
+    assert payload["rows"] == 1
+    assert (tmp_path / "mart" / "daily" / "trade_date=20260623" / "part.parquet").exists()
+    assert (tmp_path / "raw" / "tushare" / "daily").exists()
+
+
+def test_cli_data_update_is_build_alias(monkeypatch, capsys, tmp_path):
+    frame = pd.DataFrame(
+        [
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "20260623",
+                "open": 10.0,
+                "high": 11.0,
+                "low": 9.0,
+                "close": 10.5,
+                "pre_close": 10.0,
+                "change": 0.5,
+                "pct_chg": 5.0,
+                "vol": 100.0,
+                "amount": 1000.0,
+            }
+        ]
+    )
+
+    class FakeConnector:
+        def __init__(self, **kwargs):
+            pass
+
+        def fetch(self, api_name, params, fields=None):
+            return TushareConnector(client=FakeTushareClient(frame)).fetch(api_name, params, fields)
+
+    monkeypatch.setattr("ashare_research.cli.TushareConnector", FakeConnector)
+
+    exit_code = main(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "data",
+            "update",
+            "daily",
+            "--trade-date",
+            "20260623",
+        ]
+    )
+
+    assert exit_code == 0
+    assert json.loads(capsys.readouterr().out)["dataset"] == "daily"
+
+
+def test_cli_data_build_expands_index_daily_variants(monkeypatch, capsys, tmp_path):
+    calls = []
+
+    class FakeConnector:
+        def __init__(self, **kwargs):
+            pass
+
+        def fetch(self, api_name, params, fields=None):
+            calls.append(dict(params))
+            frame = pd.DataFrame(
+                [
+                    {
+                        "ts_code": params["ts_code"],
+                        "trade_date": params["trade_date"],
+                        "close": 1000.0,
+                        "open": 990.0,
+                        "high": 1010.0,
+                        "low": 980.0,
+                        "pre_close": 995.0,
+                        "change": 5.0,
+                        "pct_chg": 0.5,
+                        "vol": 100.0,
+                        "amount": 1000.0,
+                    }
+                ]
+            )
+            return TushareConnector(client=FakeTushareClient(frame)).fetch(api_name, params, fields)
+
+    monkeypatch.setattr("ashare_research.cli.TushareConnector", FakeConnector)
+
+    exit_code = main(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "data",
+            "build",
+            "index_daily",
+            "--trade-date",
+            "20260623",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["dataset"] == "index_daily"
+    assert payload["rows"] == 6
+    assert len(payload["raw_paths"]) == 6
+    assert {call["ts_code"] for call in calls} == {
+        "000001.SH",
+        "000300.SH",
+        "000905.SH",
+        "000852.SH",
+        "399001.SZ",
+        "399006.SZ",
+    }
+    assert (tmp_path / "mart" / "index_daily" / "trade_date=20260623" / "part.parquet").exists()
+
+
+def test_cli_data_update_publishes_akshare_notice(monkeypatch, capsys, tmp_path):
+    from ashare_research import events
+
+    def fake_fetch_notice(**kwargs):
+        return [
+            {
+                "id": "notice-1",
+                "content_hash": "h1",
+                "dedupe_key": "d1",
+                "event_type": "notice",
+                "source_kind": "akshare_notice",
+                "stock_code": "000001",
+                "stock_name": "平安银行",
+                "title": "公告",
+                "notice_type": "财务报告",
+                "publish_date": "2026-06-24",
+                "url": "https://example.com",
+                "fetched_at": "2026-06-24T20:00:00+08:00",
+                "raw": {},
+            }
+        ]
+
+    monkeypatch.setattr(events, "fetch_notice", fake_fetch_notice)
+
+    exit_code = main(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "data",
+            "update",
+            "a_stock_notice",
+            "--end-date",
+            "20260624",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["dataset"] == "a_stock_notice"
+    assert payload["rows"] == 1
+    assert (tmp_path / "mart" / "a_stock_notice" / "publish_date=2026-06-24" / "part.parquet").exists()
+
+
+def test_cli_data_update_publishes_empty_akshare_notice_partition(monkeypatch, capsys, tmp_path):
+    from ashare_research import events
+
+    monkeypatch.setattr(events, "fetch_notice", lambda **kwargs: [])
+
+    exit_code = main(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "data",
+            "update",
+            "a_stock_notice",
+            "--end-date",
+            "20260624",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["dataset"] == "a_stock_notice"
+    assert payload["rows"] == 0
+    check = MartReader(tmp_path).check_dataset("a_stock_notice", as_of="20260624")
+    assert check.status == "ready"
+    assert check.partition == {"publish_date": "2026-06-24"}
+
+
+def test_cli_data_update_publishes_earnings_forecast(monkeypatch, capsys, tmp_path):
+    from ashare_research import events
+
+    monkeypatch.setattr(
+        events,
+        "fetch_forecast",
+        lambda **kwargs: [
+            {
+                "id": "forecast-1",
+                "content_hash": "h1",
+                "dedupe_key": "d1",
+                "event_type": "forecast",
+                "source_kind": "akshare_yjyg_em",
+                "period": "20260331",
+                "stock_code": "000001",
+                "stock_name": "平安银行",
+                "metric": "净利润",
+                "forecast_type": "预增",
+                "change_range": "10%",
+                "publish_date": "2026-06-24",
+                "change_summary": "增长",
+                "change_reason": "经营改善",
+                "fetched_at": "2026-06-24T20:00:00+08:00",
+                "raw": {},
+            }
+        ],
+    )
+
+    exit_code = main(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "data",
+            "update",
+            "earnings_forecast",
+            "--end-date",
+            "20260624",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["dataset"] == "earnings_forecast"
+    assert payload["rows"] == 1
+    assert (tmp_path / "mart" / "earnings_forecast" / "publish_date=2026-06-24" / "part.parquet").exists()

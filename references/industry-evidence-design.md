@@ -115,13 +115,13 @@ AI infrastructure:
 
 - Company IR and SEC sources are strong enough to support adapter candidates.
 - Hyperscaler capex, AI infrastructure comments, server/networking allocation, and data-center cost guidance are recurring high-value metrics.
-- Supplier-level order linkage still requires LLM evidence extraction from filings, IR materials, tenders, and credible news.
+- Supplier-level order linkage still requires LLM evidence extraction from filings, IR materials, tenders, and official interaction platforms.
 
 Lithium battery:
 
 - GFEX lithium carbonate warehouse receipts and contract specs are strong adapter candidates.
 - Auto and NEV sales can use CAAM or auto-statistics sources if parsing is stable.
-- Power-battery installation data needs a stable original-source map; media reposts should be medium confidence.
+- Power-battery installation data needs a stable original-source map; non-original reposts should not be accepted as evidence.
 - Energy-storage tender evidence should use public-resource or official procurement platforms for production facts; aggregators are discovery-only.
 
 ## Production Caution

@@ -28,22 +28,19 @@
 分析前先做数据分级，并在输出中标注来源：
 
 1. **用户提供的数据**：直接使用，标注“来源：用户提供”。
-2. **项目数据 Provider 数据**：优先使用 `ashare-data-provider` 产出的结构化数据或 `research_context`，标注接口名、参数日期、数据日期和获取时间。
-3. **项目内置事件数据**：公告、业绩预告、时讯优先使用 Provider 高层能力，标注 `source_kind`、`fetched_at` 和原始发布日期。
-4. **受控外部来源数据**：只有在项目数据缺失或接口不可用时使用，必须来自 `source_policy.json` 允许的来源组，并标注来源、URL、查询时间和数据日期。
+2. **项目结构化数据**：优先使用 `ashare_research` 产出的 mart、feature mart 或 context pack，标注 dataset/feature、分区日期、数据日期和元数据时间。
+3. **项目事件数据**：公告、业绩预告、龙虎榜、涨跌停、热门题材等优先使用已发布 mart，标注 dataset、trade_date/snapshot_date 和 source。
+4. **外部 evidence**：只有项目数据覆盖不了产业事实、海外数据、政策、招投标、capex、价格、产能等问题时使用，必须形成 `EvidenceRecord` 所需字段。
 5. **模型训练记忆中的数字**：禁止默默使用；如果必须提及，标注“可能过时，需核实”。
 6. **无法获取的数据**：明确写“暂无可靠数据”，不得估算成事实。
 
-如果用户或系统提供 `source_policy.json`：
+必须遵守项目来源边界：
 
-- 必须遵守其中的 `blocked_eligibility` 和 `blocked_apis`。
-- 禁止调用或建议调用 `needs_separate_permission` 的 Tushare 接口。
-- `eligibility=unknown` 的接口只有在已通过 smoke 验证、本地已有成功缓存，或用户明确允许探索时才可使用。
-- 外部搜索只能从 `external_source_groups` 中选择来源；不能自由选择未知财经网站支撑关键结论。
-- 行业特有数据如果无法由通用 Provider 覆盖，可以按 `dynamic_source_discovery` 做受控发现；此时约束的是“可信来源类型”和“证据记录格式”，不要求预先穷举所有行业网站。
-- 如果 `research_context.data_gaps` 存在缺口，必须先用 `gap_resolution.rules` 匹配缺口；只允许使用匹配规则里的 `allowed_source_groups` 和 `priority` 来源。
-- 如果缺口没有匹配到 `gap_resolution.rules`，或匹配结果的 `allowed_source_groups` 为空，直接写“暂无可靠数据”，不得自行扩展搜索来源。
-- 非官方财经网站只能作为事件线索或交叉验证，不得单独支撑价格、估值、财报、宏观政策、监管公告等关键判断。
+- mart 已覆盖的行情、资金、公告、财务事实，不允许被外部搜索覆盖。
+- 外部产业事实必须有来源、URL、发布时间、查询时间、置信度和验证状态。
+- 公司级订单、客户、产能、产品进展，必须来自公告、定期报告、公司 IR、交易所问询回复或官方互动平台。
+- 非官方财经网站不能单独支撑价格、估值、财报、宏观政策、监管公告等关键判断。
+- 如果没有可追溯来源，直接写“暂无可靠数据”。
 
 如果缺少关键数据，必须说明缺口。例如：
 
@@ -54,56 +51,41 @@
 
 ## 项目数据优先流程
 
-如果用户提供了 `research_context`，先按以下顺序检查：
+如果用户提供或项目已生成 context pack，先按以下顺序检查：
 
-1. `target`：代码、名称、行业、上市状态、ST/退市/风险警示。
-2. `market`：最近完成交易日、日线、复权行情、估值、换手、涨跌停价。
-3. `macro`：指数、行业指数、市场成交、利率、通胀、信用、政策事件。
-4. `fundamentals`：利润表、资产负债表、现金流、财务指标、主营构成、财报披露、审计意见。
-5. `events`：公告、业绩预告、回购、分红、增减持、质押、快讯。
-6. `trading`：资金流、两融、龙虎榜、涨跌停生态、技术指标。
-7. `data_gaps`：Provider 已确认缺失或不可用的数据。
+1. `coverage`：本次 context 覆盖的 as_of、窗口、输入分区和数据缺口。
+2. `facts.market`：指数、行业、成交、估值、广度和市场强弱。
+3. `facts.features`：市场结构、行业强度、概念强度、龙头验证、高弹性候选等可复现 feature。
+4. `facts.evidence`：已入库外部产业证据，关注 `confidence`、`verification`、`published_at` 和 `query_time`。
+5. `facts.knowledge`：行业链、实体别名、公司产品关系等慢变量知识。
+6. `data_gaps`：本次 context 明确缺失的数据和影响。
 
-如果 `research_context` 已覆盖某项数据，不得再用网络搜索覆盖它，除非来源时间更晚且能明确说明差异。
+如果 context pack 或 mart 已覆盖某项事实，不得再用网络搜索覆盖它，除非来源时间更晚且能明确说明差异。
 
-如果用户提供了 `research_summary`，必须优先读取：
-
-1. `market/fundamentals/events`：已经由项目稳定计算出的行情、财务、主营和公告线索。
-2. `research_needs.items`：报告仍需要验证的问题，区分 `covered_by_project_data`、`covered_by_external_evidence`、`needs_external_evidence`、`needs_company_or_filing_evidence`、`needs_filing_extraction` 等状态。
-3. `research_needs.analysis_gaps`：当前报告不可直接下确定结论的分析缺口。
-4. `external_evidence.records`：LLM 或上游补充的外部证据；只有 `valid=true` 且来源等级满足要求的记录可以用于关键结论。
-
-`data_gaps=0` 只表示 Provider 尝试采集的数据源没有失败，不表示投研问题已经完整覆盖；是否完整以 `research_needs.analysis_gaps` 为准。
-
-如果没有 `research_context`，但能调用项目 Provider，优先收集：
+如果没有 context pack，但能调用项目 CLI/reader，优先收集：
 
 ```text
 stock_basic / stock_company / trade_cal
 daily / daily_basic / pro_bar / adj_factor / stk_limit
 index_daily / index_dailybasic / sw_daily / ci_daily / index_member_all
 income / balancesheet / cashflow / fina_indicator / fina_mainbz / express / forecast
-a_stock_notice / earnings_forecast / event_news
+a_stock_notice / earnings_forecast
 moneyflow_ind_ths / moneyflow_ind_dc / margin_detail / top10_holders / top10_floatholders
 shibor / shibor_quote / cn_ppi / cn_gdp / sf_month / us_tltr / us_trycr / eco_cal
 ```
 
-如果某个接口被 `source_policy.json` 拉黑，直接进入外部替代流程，不要尝试强制调用。
+如果项目 mart、feature 或 context 明确缺失某项事实，必须在结论里标注缺口，不得把缺口静默补成确定性结论。
 
 ## Data Gaps 补缺流程
 
-当 `research_context.data_gaps` 非空时，逐条处理：
+当 context pack 或读取过程出现 `data_gaps` 时，逐条处理：
 
-1. 读取缺口的 `section`、`name` 和 `source.api_name`。
-2. 在 `source_policy.gap_resolution.rules` 中寻找匹配规则。
-3. 如果匹配规则存在：
-   - 只使用 `allowed_source_groups` 中的来源组。
-   - 优先使用 `priority` 列出的来源 ID。
-   - 遵守 `critical_use`：`official_required` 必须用官方或官方聚合来源；`auxiliary_only` 只能作为辅助线索。
-   - 输出中写清楚补缺来源、URL、查询时间、数据日期，并说明是“项目缺口的外部补充”。
-4. 如果没有匹配规则，或匹配规则没有允许来源：
-   - 不搜索。
-   - 在对应分析项写“暂无可靠数据”。
-5. 不得因为搜索到了非允许来源而补齐缺口。
+1. 读取缺口的 `kind`、`name`、`status`、`message` 和影响范围。
+2. 判断缺口属于项目内事实还是外部产业事实。
+3. 项目内事实缺口：优先补 mart/feature；不能用外部搜索覆盖行情、财务、公告、资金等事实。
+4. 外部产业事实缺口：按 evidence schema 搜索官方、公司、协会、交易所、价格指数或招投标平台。
+5. 如果找不到合格来源，在对应分析项写“暂无可靠数据”。
+6. 外部补缺必须明确说明“这是项目缺口的外部补充”，并给出来源、URL、发布时间和查询时间。
 
 ## 行业特有数据动态发现流程
 
@@ -113,28 +95,33 @@ shibor / shibor_quote / cn_ppi / cn_gdp / sf_month / us_tltr / us_trycr / eco_ca
    - 官方政府/监管/统计机构；
    - 交易所、巨潮资讯、公司公告和定期报告；
    - 上市公司官网或投资者关系页面；
-   - 被广泛认可的行业协会、指定数据发布机构、商品交易所或价格指数发布方；
-   - 财经媒体和行业媒体只能做线索或交叉验证。
+   - 被广泛认可的行业协会、指定数据发布机构、商品交易所或价格指数发布方。
 2. 必须记录：来源名称、URL、来源类型、查询时间、发布日期/更新日期、提取出的事实、该事实对应公司的哪个业务分部。
 3. 必须区分证据等级：`project_data / official_external / company_external / association_external / auxiliary_external`。
 4. 不能用低质量搜索结果、论坛、自媒体、匿名网页支撑关键判断。
-5. 订单、客户、产能、市场份额等公司级事实，必须来自公告、定期报告、公司官方披露或官方互动平台；行业新闻只能提示“需要核实”。
+5. 订单、客户、产能、市场份额等公司级事实，必须来自公告、定期报告、公司官方披露或官方互动平台；不得使用 source_type 白名单外来源补齐这类事实。
 6. 如果找不到符合证据等级的来源，写“暂无可靠数据”。
 
 外部发现结果必须按 `external_evidence` 记录，字段至少包括：
 
 ```json
 {
-  "fact": "提取出的事实",
-  "source_class": "official_government_or_regulator",
+  "claim": "提取出的可验证事实",
+  "topic": "price|inventory|capacity|utilization|order|tender|capex|policy|association_data|other",
+  "industry": "行业或主题",
+  "metric": "数值证据的规范指标名",
+  "value": null,
+  "unit": null,
+  "period": "日期、月份、季度或年度",
+  "frequency": "daily|weekly|monthly|quarterly|annual|event|unknown",
+  "source_type": "official|exchange|regulator|company_filing|company_ir|association|industry_association|tender_platform|official_platform|gov_policy|price_index|vendor|other",
   "source_name": "来源名称",
-  "url": "https://...",
+  "source_url": "https://...",
   "query_time": "YYYY-MM-DDTHH:MM:SS+08:00",
-  "publish_date": "YYYY-MM-DD 或 暂无可靠数据",
-  "business_segment": "对应业务分部",
-  "supports_need": "research_needs.items[].id",
-  "evidence_level": "official_external/company_external/association_external/auxiliary_external",
-  "confidence": "high/medium/low"
+  "published_at": "YYYY-MM-DD 或 暂无可靠数据",
+  "confidence": "high|medium|low",
+  "verification": "official_single_source|cross_verified|single_source|unverified|stale",
+  "supports": ["它支撑的分析点"]
 }
 ```
 
@@ -142,7 +129,7 @@ shibor / shibor_quote / cn_ppi / cn_gdp / sf_month / us_tltr / us_trycr / eco_ca
 
 ## 受控外部替代流程
 
-如果具备联网能力，且项目数据缺失或接口不可用，按 `source_policy.json` 的来源组补缺：
+如果具备联网能力，且项目数据缺失或接口不可用，按 evidence 来源规则补缺：
 
 1. 当前价格、涨跌幅、估值：
    - 优先项目 `daily/daily_basic/pro_bar`。
@@ -153,7 +140,7 @@ shibor / shibor_quote / cn_ppi / cn_gdp / sf_month / us_tltr / us_trycr / eco_ca
 3. 行业和供应链动态：
    - 优先项目行业指数、行业成分、公告、业绩预告。
    - 行业通用数据按“行业特有数据动态发现流程”寻找相关官方、协会、公司、交易所或价格指数来源。
-   - 公司级供应链、订单、客户、产能只能使用公告、官方披露、公司官网/IR 或官方互动问答；财经新闻只作为线索。
+   - 公司级供应链、订单、客户、产能只能使用公告、官方披露、公司官网/IR 或官方互动问答；不得使用 source_type 白名单外来源补齐。
 4. 宏观和政策：
    - 优先项目宏观接口。
    - 缺失时使用国家统计局、央行、Shibor/FRED、证监会、发改委、工信部、生态环境部、国家能源局、中国政府网等允许来源。
@@ -184,7 +171,7 @@ shibor / shibor_quote / cn_ppi / cn_gdp / sf_month / us_tltr / us_trycr / eco_ca
 我现在无法查询实时数据。分析会更准确，如果你能提供：
 1. 当前价格、涨跌幅、估值；
 2. 最新财报关键数字；
-3. 最近 1-2 条重要新闻或公告；
+3. 最近 1-2 条重要公告或官方披露；
 4. K 线、成交量、ATR 或行情截图。
 
 如果继续分析，我会只做框架推演，并明确标注哪些数据缺失。
@@ -404,6 +391,6 @@ shibor / shibor_quote / cn_ppi / cn_gdp / sf_month / us_tltr / us_trycr / eco_ca
 当前价格：{价格}
 最近财报：{关键数字}
 K线/成交量/ATR：{数据或截图描述}
-最近新闻：{标题或摘要}
+最近公告/官方披露：{标题或摘要}
 请用 Prism 三层框架判断状态。
 ```
