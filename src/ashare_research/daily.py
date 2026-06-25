@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from .context_packs import validate_context_dependencies
 from .features import FeatureRegistry, FeatureStore
 from .marts.reader import MartReader
 from .schemas import AShareResearchError
@@ -218,7 +219,11 @@ def build_status(
     tasks = daily_plan()
     dataset_checks = []
     for task in tasks:
-        check = reader.check_dataset(task.dataset, as_of=as_of).to_dict()
+        check = reader.check_dataset(
+            task.dataset,
+            as_of=as_of,
+            allow_latest_snapshot=task.partition_kind == "snapshot_date",
+        ).to_dict()
         check["group"] = task.group
         check["required"] = task.required
         dataset_checks.append(check)
@@ -229,7 +234,9 @@ def build_status(
         for window in windows:
             try:
                 meta = feature_store.load_meta(spec.name, as_of=as_of, window=window)
-                quality = feature_store.quality_for_partition(spec, as_of=as_of, window=window)
+                quality = dict(meta.quality or {})
+                if not quality or "status" not in quality:
+                    quality = feature_store.quality_for_partition(spec, as_of=as_of, window=window)
                 status = "ready" if quality.get("status") == "ok" else str(quality.get("status", "degraded"))
                 feature_checks.append(
                     {
@@ -271,6 +278,20 @@ def build_status(
             context_payload = json.loads(context_path.read_text(encoding="utf-8"))
             context_check["coverage"] = context_payload.get("coverage", {})
             context_check["quality_flags"] = context_payload.get("quality_flags", [])
+            context_check["agent_guidance"] = context_payload.get("agent_guidance", {})
+            dependency_check = validate_context_dependencies(
+                context_payload,
+                expected_as_of=as_of,
+                expected_trade_days=context_trade_days,
+                expected_windows=windows,
+            )
+            context_check["dependency_check"] = dependency_check
+            if dependency_check["status"] != "ready":
+                context_check["status"] = "degraded"
+                context_check["quality_flags"] = [
+                    *context_check.get("quality_flags", []),
+                    *dependency_check.get("flags", []),
+                ]
         except Exception as error:
             context_check["status"] = "read_error"
             context_check["message"] = str(error)
@@ -282,7 +303,7 @@ def build_status(
         if item.get("required") and item.get("status") in blocking_statuses
     ]
     blocking.extend(item for item in feature_checks if item.get("status") in blocking_statuses)
-    if context_check["status"] != "ready":
+    if context_check["status"] in blocking_statuses:
         blocking.append(context_check)
 
     degraded = [
@@ -290,7 +311,7 @@ def build_status(
         for item in [*dataset_checks, *feature_checks]
         if item.get("status") == "degraded"
     ]
-    if context_check.get("quality_flags"):
+    if context_check.get("status") == "degraded" or context_check.get("quality_flags"):
         degraded.append(context_check)
 
     warnings = [
@@ -303,21 +324,30 @@ def build_status(
         status = "blocked"
     elif degraded:
         status = "degraded"
-    elif warnings:
-        status = "warning"
     else:
         status = "ready"
+
+    if blocking:
+        maintenance_status = "blocked"
+    elif degraded:
+        maintenance_status = "degraded"
+    elif warnings:
+        maintenance_status = "warning"
+    else:
+        maintenance_status = "ready"
 
     return {
         "schema": "ashare.daily_status.v1",
         "as_of": as_of,
         "status": status,
+        "maintenance_status": maintenance_status,
         "coverage": {
             "datasets_ready": sum(1 for item in dataset_checks if item["status"] == "ready"),
             "datasets_total": len(dataset_checks),
             "features_ready": sum(1 for item in feature_checks if item["status"] == "ready"),
             "features_total": len(feature_checks),
             "degraded": len(degraded),
+            "warnings": len(warnings),
             "context_ready": context_check["status"] == "ready",
         },
         "datasets": dataset_checks,

@@ -42,6 +42,7 @@ class ContextPack:
     coverage: dict[str, Any]
     data_gaps: tuple[dict[str, Any], ...] = ()
     quality_flags: tuple[str, ...] = ()
+    agent_guidance: dict[str, Any] = field(default_factory=dict)
     skipped_sources: tuple[dict[str, Any], ...] = ()
     constraints: dict[str, Any] = field(default_factory=dict)
     source_policy_summary: dict[str, Any] = field(default_factory=dict)
@@ -61,6 +62,7 @@ class ContextPack:
             "coverage": dict(self.coverage),
             "data_gaps": list(self.data_gaps),
             "quality_flags": list(self.quality_flags),
+            "agent_guidance": dict(self.agent_guidance),
             "skipped_sources": list(self.skipped_sources),
             "constraints": dict(self.constraints),
             "source_policy_summary": dict(self.source_policy_summary),

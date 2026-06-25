@@ -8,6 +8,7 @@ import pandas as pd
 from ..marts.reader import MartReader
 from ..schemas import AShareResearchError, FeatureBuildResult, FeatureError, FeatureSpec
 from .registry import FeatureRegistry
+from .scoring import FeatureScoreConfig, ScoringProfile
 from .store import FeatureStore
 
 
@@ -17,33 +18,43 @@ class FeatureBuilder:
         mart_reader: MartReader,
         feature_store: FeatureStore | None = None,
         registry: FeatureRegistry | None = None,
+        scoring_profile: ScoringProfile | None = None,
     ) -> None:
         self.mart_reader = mart_reader
         self.feature_store = feature_store or FeatureStore(mart_reader.data_dir)
         self.registry = registry or FeatureRegistry.builtin()
+        self.scoring_profile = scoring_profile or ScoringProfile.builtin()
 
     def build(self, feature: str, *, as_of: str, windows: list[int]) -> list[FeatureBuildResult]:
         spec = self.registry.require(feature)
+        score_config = self.scoring_profile.require(feature)
+        scoring = self.scoring_profile.metadata(feature)
         results: list[FeatureBuildResult] = []
         for window in windows:
             if feature == "market_strength":
-                frame, inputs = self._build_market_strength(as_of=as_of, window=window)
+                frame, inputs = self._build_market_strength(as_of=as_of, window=window, score_config=score_config)
             elif feature == "industry_strength":
-                frame, inputs = self._build_industry_strength(as_of=as_of, window=window)
+                frame, inputs = self._build_industry_strength(as_of=as_of, window=window, score_config=score_config)
             elif feature == "concept_strength":
-                frame, inputs = self._build_concept_strength(as_of=as_of, window=window)
+                frame, inputs = self._build_concept_strength(as_of=as_of, window=window, score_config=score_config)
             elif feature == "limit_sentiment":
-                frame, inputs = self._build_limit_sentiment(as_of=as_of, window=window)
+                frame, inputs = self._build_limit_sentiment(as_of=as_of, window=window, score_config=score_config)
             elif feature == "leader_validation":
-                frame, inputs = self._build_leader_validation(as_of=as_of, window=window)
+                frame, inputs = self._build_leader_validation(as_of=as_of, window=window, score_config=score_config)
             elif feature == "elasticity_candidates":
-                frame, inputs = self._build_elasticity_candidates(as_of=as_of, window=window)
+                frame, inputs = self._build_elasticity_candidates(as_of=as_of, window=window, score_config=score_config)
             else:
                 raise FeatureError(f"No builder registered for feature {feature!r}")
-            results.append(self.feature_store.write_partition(spec, frame, as_of=as_of, window=window, inputs=inputs))
+            results.append(self.feature_store.write_partition(spec, frame, as_of=as_of, window=window, inputs=inputs, scoring=scoring))
         return results
 
-    def _build_market_strength(self, *, as_of: str, window: int) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+    def _build_market_strength(
+        self,
+        *,
+        as_of: str,
+        window: int,
+        score_config: FeatureScoreConfig,
+    ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
         daily = self.mart_reader.read_window(
             "index_daily",
             as_of=as_of,
@@ -55,7 +66,7 @@ class FeatureBuilder:
             {"trade_date": as_of},
             columns=["ts_code", "trade_date", "turnover_rate", "pe_ttm", "pb", "total_mv", "float_mv"],
         )
-        frame = _window_strength(daily, as_of=as_of, window=window, source_dataset="index_daily")
+        frame = _window_strength(daily, as_of=as_of, window=window, source_dataset="index_daily", score_config=score_config)
         frame = _attach_latest_columns(
             frame,
             basic,
@@ -68,15 +79,21 @@ class FeatureBuilder:
             _input_summary("index_dailybasic", basic, "trade_date"),
         ]
 
-    def _build_industry_strength(self, *, as_of: str, window: int) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+    def _build_industry_strength(
+        self,
+        *,
+        as_of: str,
+        window: int,
+        score_config: FeatureScoreConfig,
+    ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
         frames: list[pd.DataFrame] = []
         inputs: list[dict[str, Any]] = []
-        sw_members, sw_members_input = self._read_optional_partition(
+        sw_members, sw_members_input = self._read_snapshot_partition(
             "index_member_all",
             {"snapshot_date": as_of},
             columns=["l1_code", "l1_name", "l2_code", "l2_name", "l3_code", "l3_name", "ts_code"],
         )
-        ci_members, ci_members_input = self._read_optional_partition(
+        ci_members, ci_members_input = self._read_snapshot_partition(
             "ci_index_member",
             {"snapshot_date": as_of},
             columns=["l1_code", "l1_name", "l2_code", "l2_name", "l3_code", "l3_name", "ts_code"],
@@ -92,18 +109,30 @@ class FeatureBuilder:
                 trade_days=window,
                 columns=None,
             )
-            strength = _window_strength(daily, as_of=as_of, window=window, source_dataset=dataset)
+            strength = _window_strength(daily, as_of=as_of, window=window, source_dataset=dataset, score_config=score_config)
             frames.append(_attach_industry_hierarchy(strength, hierarchy_by_dataset[dataset]))
             inputs.append(_input_summary(dataset, daily, "trade_date"))
         inputs.extend([sw_members_input, ci_members_input])
         return pd.concat(frames, ignore_index=True), inputs
 
-    def _build_concept_strength(self, *, as_of: str, window: int) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+    def _build_concept_strength(
+        self,
+        *,
+        as_of: str,
+        window: int,
+        score_config: FeatureScoreConfig,
+    ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
         concepts = self.mart_reader.read_window("dc_index", as_of=as_of, trade_days=window, columns=None)
-        frame = _concept_strength(concepts, as_of=as_of, window=window, source_dataset="dc_index")
+        frame = _concept_strength(concepts, as_of=as_of, window=window, source_dataset="dc_index", score_config=score_config)
         return frame, [_input_summary("dc_index", concepts, "trade_date")]
 
-    def _build_limit_sentiment(self, *, as_of: str, window: int) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+    def _build_limit_sentiment(
+        self,
+        *,
+        as_of: str,
+        window: int,
+        score_config: FeatureScoreConfig,
+    ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
         limit_d = self.mart_reader.read_window("limit_list_d", as_of=as_of, trade_days=window)
         limit_ths = self.mart_reader.read_window("limit_list_ths", as_of=as_of, trade_days=window)
         trade_dates = sorted(set(limit_d["trade_date"].astype(str)) | set(limit_ths["trade_date"].astype(str)))
@@ -113,6 +142,9 @@ class FeatureBuilder:
             ths_day = limit_ths[limit_ths["trade_date"].astype(str) == trade_date]
             up_count = int((d_day.get("limit", pd.Series(dtype=str)).astype(str) == "U").sum())
             down_count = int((d_day.get("limit", pd.Series(dtype=str)).astype(str) == "D").sum())
+            limit_up_score = float(up_count * score_config.weight("up_count"))
+            limit_down_score = float(down_count * score_config.weight("down_count"))
+            ths_pool_score = float(len(ths_day) * score_config.weight("ths_count"))
             rows.append(
                 {
                     "as_of": as_of,
@@ -125,7 +157,10 @@ class FeatureBuilder:
                     "limit_amount_sum": _safe_sum(ths_day, "limit_amount"),
                     "limit_order_sum": _safe_sum(ths_day, "limit_order"),
                     "max_board_height": _max_board_height(ths_day),
-                    "sentiment_score": _limit_sentiment_score(up_count, down_count, int(len(ths_day))),
+                    "limit_up_score": limit_up_score,
+                    "limit_down_score": limit_down_score,
+                    "ths_pool_score": ths_pool_score,
+                    "sentiment_score": _limit_sentiment_score(up_count, down_count, int(len(ths_day)), score_config),
                 }
             )
         return pd.DataFrame(rows), [
@@ -133,27 +168,45 @@ class FeatureBuilder:
             _input_summary("limit_list_ths", limit_ths, "trade_date"),
         ]
 
-    def _build_leader_validation(self, *, as_of: str, window: int) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
-        base, inputs = self._stock_validation_base(as_of=as_of, window=window)
+    def _build_leader_validation(
+        self,
+        *,
+        as_of: str,
+        window: int,
+        score_config: FeatureScoreConfig,
+    ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+        base, inputs = self._stock_validation_base(as_of=as_of, window=window, score_config=score_config)
         if base.empty:
             return base, inputs
         frame = base.copy()
-        frame["leader_score"] = frame.apply(_leader_score, axis=1)
+        frame = _attach_leader_scores(frame, score_config)
         frame["is_large_cap"] = pd.to_numeric(frame.get("latest_circ_mv"), errors="coerce").fillna(0) >= 1_000_000
         frame = frame.sort_values(["leader_score", "window_return_pct"], ascending=[False, False])
         return frame, inputs
 
-    def _build_elasticity_candidates(self, *, as_of: str, window: int) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
-        base, inputs = self._stock_validation_base(as_of=as_of, window=window)
+    def _build_elasticity_candidates(
+        self,
+        *,
+        as_of: str,
+        window: int,
+        score_config: FeatureScoreConfig,
+    ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+        base, inputs = self._stock_validation_base(as_of=as_of, window=window, score_config=score_config)
         if base.empty:
             return base, inputs
         frame = base.copy()
-        frame["elasticity_score"] = frame.apply(_elasticity_score, axis=1)
+        frame = _attach_elasticity_scores(frame, score_config)
         frame = frame.sort_values(["elasticity_score", "window_return_pct"], ascending=[False, False]).reset_index(drop=True)
         frame["elasticity_rank"] = frame.index + 1
         return frame, inputs
 
-    def _stock_validation_base(self, *, as_of: str, window: int) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+    def _stock_validation_base(
+        self,
+        *,
+        as_of: str,
+        window: int,
+        score_config: FeatureScoreConfig,
+    ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
         daily = self.mart_reader.read_window(
             "daily",
             as_of=as_of,
@@ -174,7 +227,7 @@ class FeatureBuilder:
                 "circ_mv",
             ],
         )
-        stock_basic, stock_basic_input = self._read_optional_partition(
+        stock_basic, stock_basic_input = self._read_snapshot_partition(
             "stock_basic",
             {"snapshot_date": as_of},
             columns=["ts_code", "name", "industry", "market", "list_status"],
@@ -182,13 +235,13 @@ class FeatureBuilder:
         moneyflow, moneyflow_input = self._read_optional_window("moneyflow_dc", as_of=as_of, window=window)
         top_list, top_input = self._read_optional_window("top_list", as_of=as_of, window=window)
         limit_ths, limit_input = self._read_optional_window("limit_list_ths", as_of=as_of, window=window)
-        sw_members, sw_members_input = self._read_optional_partition(
+        sw_members, sw_members_input = self._read_snapshot_partition(
             "index_member_all",
             {"snapshot_date": as_of},
             columns=["ts_code", "l1_code", "l1_name", "l2_code", "l2_name", "l3_code", "l3_name"],
         )
 
-        frame = _window_strength(daily, as_of=as_of, window=window, source_dataset="daily")
+        frame = _window_strength(daily, as_of=as_of, window=window, source_dataset="daily", score_config=score_config)
         frame = _attach_stock_basic(frame, stock_basic)
         frame = _attach_stock_sw_industry(frame, sw_members)
         frame = _attach_latest_columns(
@@ -248,8 +301,43 @@ class FeatureBuilder:
                 "message": str(error) if missing_columns else "",
             }
 
+    def _read_snapshot_partition(
+        self,
+        dataset: str,
+        partition: dict[str, str],
+        *,
+        columns: list[str] | None = None,
+    ) -> tuple[pd.DataFrame, dict[str, Any]]:
+        frame, info = self._read_optional_partition(dataset, partition, columns=columns)
+        if _is_usable_input(info, frame):
+            return frame, _snapshot_input_info(info, requested_partition=partition, actual_partition=partition, mode="exact")
+        latest = self.mart_reader.latest_partition(dataset, "snapshot_date")
+        if latest is None:
+            return frame, _snapshot_input_info(info, requested_partition=partition, actual_partition={}, mode="missing")
+        fallback_frame, fallback_info = self._read_optional_partition(dataset, latest.values, columns=columns)
+        if not _is_usable_input(fallback_info, fallback_frame):
+            return fallback_frame, _snapshot_input_info(
+                fallback_info,
+                requested_partition=partition,
+                actual_partition=latest.values,
+                mode="missing",
+            )
+        return fallback_frame, _snapshot_input_info(
+            fallback_info,
+            requested_partition=partition,
+            actual_partition=latest.values,
+            mode="latest_available",
+        )
 
-def _concept_strength(frame: pd.DataFrame, *, as_of: str, window: int, source_dataset: str) -> pd.DataFrame:
+
+def _concept_strength(
+    frame: pd.DataFrame,
+    *,
+    as_of: str,
+    window: int,
+    source_dataset: str,
+    score_config: FeatureScoreConfig,
+) -> pd.DataFrame:
     if frame.empty:
         return pd.DataFrame()
     working = frame.copy()
@@ -272,6 +360,10 @@ def _concept_strength(frame: pd.DataFrame, *, as_of: str, window: int, source_da
         latest_pct = _nullable_float(latest["pct_change"]) if "pct_change" in group.columns else None
         leading_pct = _nullable_float(latest["leading_pct"]) if "leading_pct" in group.columns else None
         window_return = float(pct.sum()) if not pct.empty else None
+        momentum_score = (window_return or 0.0) * score_config.weight("window_return")
+        latest_pct_score = (latest_pct or 0.0) * score_config.weight("latest_pct")
+        leading_pct_score = (leading_pct or 0.0) * score_config.weight("leading_pct")
+        breadth_component_score = (breadth_score or 0.0) * score_config.weight("breadth")
         rows.append(
             {
                 "as_of": as_of,
@@ -293,13 +385,24 @@ def _concept_strength(frame: pd.DataFrame, *, as_of: str, window: int, source_da
                 "latest_up_num": latest_up,
                 "latest_down_num": latest_down,
                 "breadth_score": breadth_score,
-                "strength_score": _concept_score(window_return, latest_pct, leading_pct, breadth_score),
+                "momentum_score": momentum_score,
+                "latest_pct_score": latest_pct_score,
+                "leading_pct_score": leading_pct_score,
+                "breadth_component_score": breadth_component_score,
+                "strength_score": _concept_score(window_return, latest_pct, leading_pct, breadth_score, score_config),
             }
         )
     return pd.DataFrame(rows).sort_values(["strength_score", "window_return_pct"], ascending=[False, False])
 
 
-def _window_strength(frame: pd.DataFrame, *, as_of: str, window: int, source_dataset: str) -> pd.DataFrame:
+def _window_strength(
+    frame: pd.DataFrame,
+    *,
+    as_of: str,
+    window: int,
+    source_dataset: str,
+    score_config: FeatureScoreConfig,
+) -> pd.DataFrame:
     if frame.empty:
         return pd.DataFrame()
     working = frame.copy()
@@ -322,6 +425,10 @@ def _window_strength(frame: pd.DataFrame, *, as_of: str, window: int, source_dat
         window_return = ((latest_close / first_close) - 1.0) * 100.0 if first_close else None
         avg_amount = float(group["amount"].mean()) if "amount" in group.columns else None
         latest_amount = float(latest["amount"]) if "amount" in group.columns and pd.notna(latest["amount"]) else None
+        amount_vs_avg = (latest_amount / avg_amount) if latest_amount is not None and avg_amount else None
+        amount_excess = _amount_excess(amount_vs_avg, score_config)
+        momentum_score = (window_return or 0.0) * score_config.weight("window_return")
+        volume_score = amount_excess * score_config.weight("amount_excess")
         rows.append(
             {
                 "as_of": as_of,
@@ -337,9 +444,11 @@ def _window_strength(frame: pd.DataFrame, *, as_of: str, window: int, source_dat
                 "window_return_pct": window_return,
                 "avg_amount": avg_amount,
                 "latest_amount": latest_amount,
-                "amount_vs_avg": (latest_amount / avg_amount) if latest_amount is not None and avg_amount else None,
+                "amount_vs_avg": amount_vs_avg,
                 "above_window_midpoint": latest_close > float(group["close"].mean()),
-                "strength_score": _strength_score(window_return, latest_amount, avg_amount),
+                "momentum_score": momentum_score,
+                "volume_score": volume_score,
+                "strength_score": _strength_score(window_return, amount_vs_avg, score_config),
             }
         )
     return pd.DataFrame(rows).sort_values(["strength_score", "window_return_pct"], ascending=[False, False])
@@ -382,13 +491,13 @@ def _attach_industry_hierarchy(frame: pd.DataFrame, hierarchy: pd.DataFrame) -> 
     return _frontload_columns(_fill_missing_columns(merged, defaults), ordered)
 
 
-def _strength_score(window_return: float | None, latest_amount: float | None, avg_amount: float | None) -> float | None:
+def _strength_score(window_return: float | None, amount_vs_avg: float | None, score_config: FeatureScoreConfig) -> float | None:
     if window_return is None:
         return None
-    amount_boost = 0.0
-    if latest_amount is not None and avg_amount:
-        amount_boost = min(max((latest_amount / avg_amount) - 1.0, -1.0), 3.0)
-    return float(window_return + amount_boost * 2.0)
+    return float(
+        window_return * score_config.weight("window_return")
+        + _amount_excess(amount_vs_avg, score_config) * score_config.weight("amount_excess")
+    )
 
 
 def _concept_score(
@@ -396,10 +505,16 @@ def _concept_score(
     latest_pct: float | None,
     leading_pct: float | None,
     breadth_score: float | None,
+    score_config: FeatureScoreConfig,
 ) -> float | None:
     if window_return is None:
         return None
-    return float(window_return + (latest_pct or 0.0) * 0.5 + (leading_pct or 0.0) * 0.3 + (breadth_score or 0.0) * 2.0)
+    return float(
+        window_return * score_config.weight("window_return")
+        + (latest_pct or 0.0) * score_config.weight("latest_pct")
+        + (leading_pct or 0.0) * score_config.weight("leading_pct")
+        + (breadth_score or 0.0) * score_config.weight("breadth")
+    )
 
 
 def _breadth_score(up_num: float | None, down_num: float | None) -> float | None:
@@ -590,25 +705,47 @@ def _attach_limit_pool(frame: pd.DataFrame, limit_ths: pd.DataFrame) -> pd.DataF
     )
 
 
-def _leader_score(row: pd.Series) -> float:
+def _attach_leader_scores(frame: pd.DataFrame, score_config: FeatureScoreConfig) -> pd.DataFrame:
+    output = frame.copy()
+    scores = output.apply(lambda row: _leader_score_parts(row, score_config), axis=1, result_type="expand")
+    for column in scores.columns:
+        output[column] = scores[column]
+    output["leader_score"] = scores[
+        ["momentum_score", "volume_score", "size_score", "moneyflow_score", "top_list_score", "limit_pool_score"]
+    ].sum(axis=1)
+    return output
+
+
+def _leader_score_parts(row: pd.Series, score_config: FeatureScoreConfig) -> dict[str, float]:
     window_return = _series_float(row, "window_return_pct")
     amount_boost = _series_float(row, "amount_vs_avg")
     circ_mv = _series_float(row, "latest_circ_mv")
     moneyflow_rate = _series_float(row, "moneyflow_net_amount_rate")
     top_count = _series_float(row, "top_list_count")
     limit_count = _series_float(row, "limit_pool_count")
-    large_cap_bonus = min((circ_mv or 0.0) / 200_000.0, 8.0)
-    return float(
-        window_return * 0.7
-        + max((amount_boost or 0.0) - 1.0, 0.0) * 4.0
-        + large_cap_bonus
-        + (moneyflow_rate or 0.0) * 0.3
-        + (top_count or 0.0) * 4.0
-        + (limit_count or 0.0) * 2.0
-    )
+    large_cap_bonus = min((circ_mv or 0.0) / score_config.param("large_cap_divisor", 200000.0), score_config.param("large_cap_cap", 8.0))
+    return {
+        "momentum_score": window_return * score_config.weight("window_return"),
+        "volume_score": max((amount_boost or 0.0) - 1.0, 0.0) * score_config.weight("amount_excess"),
+        "size_score": large_cap_bonus * score_config.weight("large_cap"),
+        "moneyflow_score": (moneyflow_rate or 0.0) * score_config.weight("moneyflow_rate"),
+        "top_list_score": (top_count or 0.0) * score_config.weight("top_list_count"),
+        "limit_pool_score": (limit_count or 0.0) * score_config.weight("limit_pool_count"),
+    }
 
 
-def _elasticity_score(row: pd.Series) -> float:
+def _attach_elasticity_scores(frame: pd.DataFrame, score_config: FeatureScoreConfig) -> pd.DataFrame:
+    output = frame.copy()
+    scores = output.apply(lambda row: _elasticity_score_parts(row, score_config), axis=1, result_type="expand")
+    for column in scores.columns:
+        output[column] = scores[column]
+    output["elasticity_score"] = scores[
+        ["momentum_score", "volume_score", "turnover_score", "moneyflow_score", "top_list_score", "limit_pool_score", "size_penalty_score"]
+    ].sum(axis=1)
+    return output
+
+
+def _elasticity_score_parts(row: pd.Series, score_config: FeatureScoreConfig) -> dict[str, float]:
     window_return = _series_float(row, "window_return_pct")
     amount_boost = _series_float(row, "amount_vs_avg")
     turnover = _series_float(row, "latest_turnover_rate")
@@ -616,16 +753,16 @@ def _elasticity_score(row: pd.Series) -> float:
     moneyflow_rate = _series_float(row, "moneyflow_net_amount_rate")
     top_count = _series_float(row, "top_list_count")
     limit_count = _series_float(row, "limit_pool_count")
-    size_penalty = min((circ_mv or 0.0) / 500_000.0, 8.0)
-    return float(
-        window_return
-        + max((amount_boost or 0.0) - 1.0, 0.0) * 5.0
-        + (turnover or 0.0) * 0.6
-        + (moneyflow_rate or 0.0) * 0.7
-        + (top_count or 0.0) * 1.5
-        + (limit_count or 0.0) * 3.0
-        - size_penalty
-    )
+    size_penalty = min((circ_mv or 0.0) / score_config.param("size_penalty_divisor", 500000.0), score_config.param("size_penalty_cap", 8.0))
+    return {
+        "momentum_score": window_return * score_config.weight("window_return"),
+        "volume_score": max((amount_boost or 0.0) - 1.0, 0.0) * score_config.weight("amount_excess"),
+        "turnover_score": (turnover or 0.0) * score_config.weight("turnover"),
+        "moneyflow_score": (moneyflow_rate or 0.0) * score_config.weight("moneyflow_rate"),
+        "top_list_score": (top_count or 0.0) * score_config.weight("top_list_count"),
+        "limit_pool_score": (limit_count or 0.0) * score_config.weight("limit_pool_count"),
+        "size_penalty_score": size_penalty * score_config.weight("size_penalty"),
+    }
 
 
 def _latest_by_ts_code(frame: pd.DataFrame) -> pd.DataFrame:
@@ -661,8 +798,22 @@ def _frontload_columns(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     return frame[existing + rest]
 
 
-def _limit_sentiment_score(up_count: int, down_count: int, ths_count: int) -> float:
-    return float(up_count - down_count + ths_count * 0.5)
+def _limit_sentiment_score(up_count: int, down_count: int, ths_count: int, score_config: FeatureScoreConfig) -> float:
+    return float(
+        up_count * score_config.weight("up_count")
+        + down_count * score_config.weight("down_count")
+        + ths_count * score_config.weight("ths_count")
+    )
+
+
+def _amount_excess(amount_vs_avg: float | None, score_config: FeatureScoreConfig) -> float:
+    if amount_vs_avg is None:
+        return 0.0
+    raw = amount_vs_avg - 1.0
+    return min(
+        max(raw, score_config.param("amount_excess_floor", -1.0)),
+        score_config.param("amount_excess_cap", 3.0),
+    )
 
 
 def _max_board_height(frame: pd.DataFrame) -> int:
@@ -723,3 +874,28 @@ def _input_summary(dataset: str, frame: pd.DataFrame, date_column: str) -> dict[
         "start": str(dates.min()),
         "end": str(dates.max()),
     }
+
+
+def _is_usable_input(info: dict[str, Any], frame: pd.DataFrame) -> bool:
+    if frame.empty:
+        return False
+    return str(info.get("status", "ok")) not in {"missing", "read_error"}
+
+
+def _snapshot_input_info(
+    info: dict[str, Any],
+    *,
+    requested_partition: dict[str, str],
+    actual_partition: dict[str, str],
+    mode: str,
+) -> dict[str, Any]:
+    output = dict(info)
+    output["requested_partition"] = dict(requested_partition)
+    output["partition"] = dict(actual_partition)
+    output["snapshot_mode"] = mode
+    output["partition_mode"] = mode
+    output["historical_precision"] = "exact" if mode == "exact" else "approximate" if mode == "latest_available" else "missing"
+    if mode == "latest_available":
+        output["status"] = "fallback_snapshot"
+        output["message"] = f"using latest_available snapshot {actual_partition} for requested {requested_partition}"
+    return output

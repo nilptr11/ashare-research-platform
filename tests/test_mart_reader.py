@@ -80,6 +80,27 @@ def test_reader_degrades_when_analysis_columns_are_missing(tmp_path):
     assert payload["status"] == "degraded"
 
 
+def test_reader_can_use_latest_snapshot_for_slow_variables(tmp_path):
+    _write_partition(
+        tmp_path,
+        "stock_basic",
+        "snapshot_date",
+        "20260624",
+        [{"ts_code": "000001.SZ", "symbol": "000001", "name": "平安银行", "market": "主板", "list_status": "L"}],
+    )
+
+    reader = MartReader(data_dir=tmp_path)
+    strict = reader.check_dataset("stock_basic", as_of="20260326")
+    fallback = reader.check_dataset("stock_basic", as_of="20260326", allow_latest_snapshot=True)
+
+    assert strict.status == "missing"
+    assert fallback.status == "ready"
+    assert fallback.partition == {"snapshot_date": "20260624"}
+    assert fallback.requested_partition == {"snapshot_date": "20260326"}
+    assert fallback.partition_mode == "latest_available"
+    assert fallback.historical_precision == "approximate"
+
+
 def test_reader_reads_partition_with_limit(tmp_path):
     _write_partition(
         tmp_path,

@@ -40,6 +40,7 @@ class RunRecorder:
         knowledge_path: Path | str | None = None,
         model_output: str | None = None,
         validated_output: dict[str, Any] | None = None,
+        agent_reasoning: dict[str, Any] | None = None,
         report: str | None = None,
         run_id: str | None = None,
     ) -> dict[str, Any]:
@@ -57,6 +58,8 @@ class RunRecorder:
         raw_output_artifact = self._write_text(run_dir / "model_output.raw.md", model_output or "", kind="model_output_raw")
         validated_payload = validated_output or {"schema": "ashare.model_output.validated.v1", "status": "not_provided"}
         validated_artifact = self._write_json(run_dir / "model_output.validated.json", validated_payload, kind="model_output_validated")
+        reasoning_payload = agent_reasoning or _empty_agent_reasoning()
+        reasoning_artifact = self._write_json(run_dir / "agent_reasoning.json", reasoning_payload, kind="agent_reasoning")
         quality_payload = evaluate_quality_gates(
             protocol=protocol,
             context_packs=context_payloads,
@@ -88,10 +91,12 @@ class RunRecorder:
             evidence=evidence_artifact,
             knowledge=knowledge_artifact,
             model={"provider": "codex", "name": "codex", "temperature": None},
+            agent_reasoning=reasoning_payload,
             quality_gates=quality_payload,
             outputs={
                 "raw_model_output": raw_output_artifact.to_dict(),
                 "validated_json": validated_artifact.to_dict(),
+                "agent_reasoning": reasoning_artifact.to_dict(),
                 "quality_gates": quality_artifact.to_dict(),
                 "report": report_artifact.to_dict(),
             },
@@ -209,6 +214,19 @@ def _user_directed_protocol(question: str) -> ProtocolSpec:
         gap_policy={"missing_market_data": "warn", "missing_external_evidence": "warn", "missing_knowledge": "warn"},
         quality_gates=("freshness_gate", "gap_gate", "source_gate", "confidence_gate"),
     )
+
+
+def _empty_agent_reasoning() -> dict[str, Any]:
+    return {
+        "schema": "ashare.agent_reasoning.v1",
+        "status": "not_provided",
+        "facts_used": [],
+        "inferences": [],
+        "hypotheses": [],
+        "unverified_claims": [],
+        "validation_steps": [],
+        "open_questions": [],
+    }
 
 
 def _now_iso() -> str:

@@ -1,4 +1,4 @@
-from .builders import ContextPackBuilder
+from .builders import ContextPackBuilder, validate_context_dependencies
 from .industry import build_industry_pack
 from .market import build_market_structure_pack
 from .schemas import ContextInput, ContextPack, ContextPackError
@@ -12,4 +12,5 @@ __all__ = [
     "build_industry_pack",
     "build_market_structure_pack",
     "build_stock_pack",
+    "validate_context_dependencies",
 ]

@@ -25,7 +25,7 @@ from .daily import (
 from .datasets.catalog import DatasetCatalog
 from .evidence import EvidenceStore
 from .evidence.adapters import EvidenceAdapterRegistry, EvidenceAdapterRunner, EvidenceAdapterSpec
-from .features import FeatureBuilder, FeatureRegistry, FeatureStore
+from .features import FeatureBuilder, FeatureRegistry, FeatureStore, ScoringProfile
 from .knowledge import KnowledgeStore, proposal_rows
 from .marts.publisher import MartPublisher
 from .marts.reader import MartReader
@@ -129,6 +129,7 @@ def build_parser() -> argparse.ArgumentParser:
     feature_build.add_argument("feature", choices=[spec.name for spec in FeatureRegistry.builtin().list()])
     feature_build.add_argument("--as-of", required=True, help="目标日期，YYYYMMDD")
     feature_build.add_argument("--windows", default="5,20,60", help="逗号分隔窗口，如 5,20,60")
+    feature_build.add_argument("--scoring-profile", help="feature scoring profile JSON；默认使用内置 default.v1")
     feature_build.add_argument("--format", choices=("table", "json"), default="json")
 
     feature_read = feature_subparsers.add_parser("read", help="读取一个 feature 分区")
@@ -288,6 +289,7 @@ def build_parser() -> argparse.ArgumentParser:
     runs_record.add_argument("--knowledge")
     runs_record.add_argument("--model-output-file")
     runs_record.add_argument("--validated-output")
+    runs_record.add_argument("--agent-reasoning")
     runs_record.add_argument("--report-file")
     runs_record.add_argument("--run-id")
     runs_record.add_argument("--runs-dir")
@@ -341,6 +343,7 @@ def _add_daily_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--as-of", help="目标交易日，YYYYMMDD；不传则按交易日历和当前时间推断")
     parser.add_argument("--event-days", type=int, help="公告/业绩预告自然日回看天数；默认 7")
     parser.add_argument("--windows", default="5,20,60", help="构建 feature 的窗口，如 5,20,60")
+    parser.add_argument("--scoring-profile", help="feature scoring profile JSON；默认使用内置 default.v1")
     parser.add_argument("--trade-days", type=int, default=DEFAULT_CONTEXT_TRADE_DAYS, help="market-structure context 的交易日窗口")
     parser.add_argument("--refresh", action=argparse.BooleanOptionalAction, default=True, help="覆盖当日已有分区；daily 默认可重入")
     parser.add_argument("--skip-data", action="store_true", help="跳过 dataset 更新，只重建 feature/context")
@@ -441,7 +444,12 @@ def _run_daily(args: argparse.Namespace, reader: MartReader, *, repair: bool) ->
 
     feature_results: list[dict[str, Any]] = []
     if not args.skip_features:
-        builder = FeatureBuilder(reader, feature_store=FeatureStore(reader.data_dir), registry=FeatureRegistry.builtin())
+        builder = FeatureBuilder(
+            reader,
+            feature_store=FeatureStore(reader.data_dir),
+            registry=FeatureRegistry.builtin(),
+            scoring_profile=_load_scoring_profile(args.scoring_profile),
+        )
         for spec in FeatureRegistry.builtin().list():
             try:
                 results = [result.to_dict() for result in builder.build(spec.name, as_of=as_of, windows=windows)]
@@ -1223,7 +1231,7 @@ def _handle_feature(args: argparse.Namespace, reader: MartReader) -> int:
         return 0
     if args.feature_command == "build":
         windows = _parse_windows(args.windows)
-        builder = FeatureBuilder(reader, feature_store=store, registry=registry)
+        builder = FeatureBuilder(reader, feature_store=store, registry=registry, scoring_profile=_load_scoring_profile(args.scoring_profile))
         results = [result.to_dict() for result in builder.build(args.feature, as_of=args.as_of, windows=windows)]
         emit(results, fmt=args.format)
         return 0
@@ -1413,6 +1421,7 @@ def _handle_runs(args: argparse.Namespace, reader: MartReader) -> int:
         question = _load_question(args)
         ad_hoc_protocol = _load_json_file(Path(args.ad_hoc_protocol)) if args.ad_hoc_protocol else None
         validated_output = _load_json_file(Path(args.validated_output)) if args.validated_output else None
+        agent_reasoning = _load_json_file(Path(args.agent_reasoning)) if args.agent_reasoning else None
         model_output = Path(args.model_output_file).read_text(encoding="utf-8") if args.model_output_file else None
         report = Path(args.report_file).read_text(encoding="utf-8") if args.report_file else None
         recorder = RunRecorder(reader.data_dir, runs_dir=args.runs_dir)
@@ -1426,6 +1435,7 @@ def _handle_runs(args: argparse.Namespace, reader: MartReader) -> int:
             knowledge_path=Path(args.knowledge) if args.knowledge else None,
             model_output=model_output,
             validated_output=validated_output,
+            agent_reasoning=agent_reasoning,
             report=report,
             run_id=args.run_id,
         )
@@ -1476,6 +1486,12 @@ def _parse_windows(raw: str) -> list[int]:
     if not windows:
         raise AShareResearchError("at least one window is required")
     return windows
+
+
+def _load_scoring_profile(path: str | None) -> ScoringProfile:
+    if not path:
+        return ScoringProfile.builtin()
+    return ScoringProfile.from_file(Path(path))
 
 
 def _source_params(args: argparse.Namespace, spec: DatasetSpec, partition: dict[str, str]) -> dict[str, object]:

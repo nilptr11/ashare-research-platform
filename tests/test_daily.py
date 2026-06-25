@@ -32,7 +32,7 @@ def test_daily_status_reports_degraded_required_data_without_blocking(monkeypatc
     class FakeReader:
         data_dir = tmp_path
 
-        def check_dataset(self, dataset, as_of=None):
+        def check_dataset(self, dataset, as_of=None, **kwargs):
             return DatasetCheck(dataset=dataset, status="degraded", registered=True, partition={"trade_date": as_of}, rows=1)
 
     class EmptyFeatureRegistry:
@@ -51,6 +51,60 @@ def test_daily_status_reports_degraded_required_data_without_blocking(monkeypatc
     assert payload["status"] == "degraded"
     assert payload["blocking"] == []
     assert payload["degraded"][0]["dataset"] == "dc_index"
+
+
+def test_daily_status_keeps_optional_history_gaps_out_of_analysis_status(monkeypatch, tmp_path):
+    from ashare_research import daily
+
+    class FakeReader:
+        data_dir = tmp_path
+
+        def check_dataset(self, dataset, as_of=None, **kwargs):
+            if dataset == "dc_member":
+                return DatasetCheck(
+                    dataset=dataset,
+                    status="missing",
+                    registered=True,
+                    partition={"trade_date": as_of},
+                    message="historical optional partition missing",
+                )
+            return DatasetCheck(dataset=dataset, status="ready", registered=True, partition={"trade_date": as_of}, rows=1)
+
+    class EmptyFeatureRegistry:
+        def list(self):
+            return []
+
+    context_dir = tmp_path / "context_packs" / "market_structure" / "as_of=20260326"
+    context_dir.mkdir(parents=True)
+    (context_dir / "context.json").write_text(
+        json.dumps(
+            {
+                "as_of": "20260326",
+                "window": {"trade_days": 60, "feature_windows": [5]},
+                "coverage": {},
+                "quality_flags": [],
+                "inputs": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        daily,
+        "daily_plan",
+        lambda: [
+            DailyTask("daily", "stock_daily", "trade_date", required=True),
+            DailyTask("dc_member", "membership", "trade_date"),
+        ],
+    )
+    monkeypatch.setattr(daily.FeatureRegistry, "builtin", lambda: EmptyFeatureRegistry())
+
+    payload = build_status(FakeReader(), as_of="20260326", windows=[5], context_trade_days=60)
+
+    assert payload["status"] == "ready"
+    assert payload["maintenance_status"] == "warning"
+    assert payload["warnings"][0]["dataset"] == "dc_member"
+    assert payload["coverage"]["warnings"] == 1
 
 
 def test_cli_daily_run_writes_report(monkeypatch, capsys, tmp_path):

@@ -31,6 +31,7 @@ class RunManifest:
     evidence: RunArtifact | None = None
     knowledge: RunArtifact | None = None
     model: dict[str, Any] = field(default_factory=dict)
+    agent_reasoning: dict[str, Any] = field(default_factory=dict)
     quality_gates: dict[str, Any] = field(default_factory=dict)
     outputs: dict[str, Any] = field(default_factory=dict)
 
@@ -48,6 +49,7 @@ class RunManifest:
             "evidence": self.evidence.to_dict() if self.evidence else None,
             "knowledge": self.knowledge.to_dict() if self.knowledge else None,
             "model": dict(self.model),
+            "agent_reasoning": dict(self.agent_reasoning),
             "quality_gates": dict(self.quality_gates),
             "outputs": dict(self.outputs),
         }

@@ -107,7 +107,7 @@ class MartReader:
         ]
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
-    def check_dataset(self, dataset: str, as_of: str | None = None) -> DatasetCheck:
+    def check_dataset(self, dataset: str, as_of: str | None = None, *, allow_latest_snapshot: bool = False) -> DatasetCheck:
         spec = self.catalog.get(dataset)
         if spec is None:
             return DatasetCheck(dataset=dataset, status="unregistered", registered=False, message="dataset has no contract")
@@ -127,38 +127,68 @@ class MartReader:
         try:
             meta = self.load_meta(dataset, partition)
         except MartDataError as error:
+            if allow_latest_snapshot and as_of and "snapshot_date" in spec.partition_keys:
+                latest = self.latest_partition(dataset, "snapshot_date")
+                if latest is not None:
+                    try:
+                        meta = self.load_meta(dataset, latest.values)
+                    except MartDataError:
+                        pass
+                    else:
+                        return self._check_meta(
+                            spec,
+                            meta,
+                            requested_partition=partition,
+                            partition_mode="latest_available",
+                            historical_precision="approximate",
+                            message=f"using latest_available snapshot {latest.values} for requested {partition}",
+                        )
             return DatasetCheck(
                 dataset=dataset,
                 status="missing",
                 registered=True,
                 partition=partition,
+                requested_partition=partition,
                 message=str(error),
             )
 
+        return self._check_meta(spec, meta, requested_partition=partition)
+
+    def _check_meta(
+        self,
+        spec,
+        meta: MartPartitionMeta,
+        *,
+        requested_partition: dict[str, str] | None = None,
+        partition_mode: str = "exact",
+        historical_precision: str = "exact",
+        message: str = "",
+    ) -> DatasetCheck:
         missing_columns = tuple(column for column in spec.required_columns if column not in meta.columns)
         analysis = self._analysis_quality(spec, meta)
         if meta.rows == 0 and spec.empty_policy == "allow_empty":
             status = "ready"
-            message = ""
+            status_message = message
             missing_columns = ()
         elif missing_columns:
             status = "schema_mismatch"
-            message = "missing required columns"
+            status_message = "missing required columns"
         elif meta.rows == 0 and spec.empty_policy == "forbid_empty":
             status = "empty"
-            message = "empty partition is forbidden"
+            status_message = "empty partition is forbidden"
         elif analysis["status"] != "ok":
             status = "degraded"
-            message = analysis["reason"]
+            status_message = analysis["reason"]
         else:
             status = "ready"
-            message = ""
+            status_message = message
 
         return DatasetCheck(
-            dataset=dataset,
+            dataset=spec.name,
             status=status,
             registered=True,
             partition=meta.partition,
+            requested_partition=requested_partition or meta.partition,
             rows=meta.rows,
             missing_columns=missing_columns,
             analysis_columns=tuple(spec.analysis_columns),
@@ -171,9 +201,13 @@ class MartReader:
                 "missing_analysis_columns": list(analysis["missing_analysis_columns"]),
                 "non_null_ratios": dict(analysis["non_null_ratios"]),
                 "reason": analysis["reason"],
+                "partition_mode": partition_mode,
+                "historical_precision": historical_precision,
             },
-            path=str(self.partition_path(dataset, meta.partition)),
-            message=message,
+            path=str(self.partition_path(spec.name, meta.partition)),
+            message=status_message,
+            partition_mode=partition_mode,
+            historical_precision=historical_precision,
         )
 
     def dump_meta_json(self, dataset: str, partition: dict[str, str]) -> str:

@@ -91,7 +91,7 @@ class ContextPackBuilder:
             pack_type="market_structure",
             generated_at=_now_iso(),
             as_of=as_of,
-            window={"trade_days": trade_days, "end_trade_date": as_of},
+            window={"trade_days": trade_days, "end_trade_date": as_of, "feature_windows": list(windows)},
             inputs=tuple(inputs),
             sections={
                 "market": {"dataset_checks": dataset_checks},
@@ -103,6 +103,13 @@ class ContextPackBuilder:
             coverage=coverage,
             data_gaps=tuple(data_gaps),
             quality_flags=tuple(quality_flags),
+            agent_guidance=_agent_guidance(
+                pack_type="market_structure",
+                feature_rows=feature_rows,
+                data_gaps=data_gaps,
+                dataset_checks=dataset_checks,
+                inputs=inputs,
+            ),
             constraints={"latest_complete_trade_date": as_of, "intraday_available": False},
             source_policy_summary=source_policy_summary(),
             provenance=self._provenance(),
@@ -144,7 +151,7 @@ class ContextPackBuilder:
             pack_type="industry",
             generated_at=_now_iso(),
             as_of=as_of,
-            window={"end_trade_date": as_of},
+            window={"end_trade_date": as_of, "feature_windows": list(windows)},
             inputs=tuple(inputs),
             sections={
                 "industry": {"name": industry},
@@ -156,6 +163,12 @@ class ContextPackBuilder:
             coverage=coverage,
             data_gaps=tuple(data_gaps),
             quality_flags=tuple(quality_flags),
+            agent_guidance=_agent_guidance(
+                pack_type="industry",
+                feature_rows=feature_rows,
+                data_gaps=data_gaps,
+                inputs=inputs,
+            ),
             constraints={"latest_complete_trade_date": as_of, "intraday_available": False},
             source_policy_summary=source_policy_summary(),
             provenance=self._provenance(),
@@ -199,6 +212,7 @@ class ContextPackBuilder:
             coverage=coverage,
             data_gaps=tuple(data_gaps),
             quality_flags=tuple(quality_flags),
+            agent_guidance=_agent_guidance(pack_type="stock", data_gaps=data_gaps, inputs=inputs),
             constraints={"latest_complete_trade_date": as_of, "intraday_available": False},
             source_policy_summary=source_policy_summary(),
             provenance=self._provenance(),
@@ -214,7 +228,10 @@ class ContextPackBuilder:
         data_gaps: list[dict[str, Any]],
         quality_flags: list[str],
     ) -> list[dict[str, Any]]:
-        checks = self.reader.check(list(datasets), as_of=as_of)["datasets"]
+        checks = [
+            self.reader.check_dataset(dataset, as_of=as_of, allow_latest_snapshot=True).to_dict()
+            for dataset in datasets
+        ]
         for check in checks:
             path = Path(str(check["path"])) if check.get("path") else None
             meta_path = path / "_meta.json" if path else None
@@ -226,7 +243,13 @@ class ContextPackBuilder:
                     status=str(check["status"]),
                     content_hash=content_hash,
                     path=str(path) if path else None,
-                    details={"partition": check.get("partition", {}), "rows": check.get("rows")},
+                    details={
+                        "partition": check.get("partition", {}),
+                        "requested_partition": check.get("requested_partition", {}),
+                        "rows": check.get("rows"),
+                        "partition_mode": check.get("partition_mode", "exact"),
+                        "historical_precision": check.get("historical_precision", "exact"),
+                    },
                 )
             )
             if check["status"] != "ready":
@@ -253,7 +276,9 @@ class ContextPackBuilder:
                 name = f"{feature}:{window}"
                 try:
                     meta = self.feature_store.load_meta(feature, as_of=as_of, window=window)
-                    quality = self.feature_store.quality_for_partition(spec, as_of=as_of, window=window)
+                    quality = dict(meta.quality or {})
+                    if not quality or "status" not in quality:
+                        quality = self.feature_store.quality_for_partition(spec, as_of=as_of, window=window)
                     status = "ready" if quality.get("status") == "ok" else str(quality.get("status", "degraded"))
                     path = self.feature_store.partition_path(feature, as_of=as_of, window=window)
                     row = meta.to_dict() | {"status": status, "path": str(path), "quality": quality}
@@ -344,18 +369,37 @@ class ContextPackBuilder:
             "stock_basic": {"snapshot_date": as_of},
         }.items():
             try:
-                frame = self.reader.read_partition(dataset, partition)
+                requested_partition = dict(partition)
+                actual_partition = dict(partition)
+                status = "ready"
+                partition_mode = "exact"
+                historical_precision = "exact"
+                if "snapshot_date" in partition:
+                    check = self.reader.check_dataset(dataset, as_of=as_of, allow_latest_snapshot=True)
+                    if check.status not in {"ready", "degraded"}:
+                        raise AShareResearchError(check.message or f"{dataset}: snapshot partition is not ready")
+                    actual_partition = dict(check.partition)
+                    status = check.status
+                    partition_mode = check.partition_mode
+                    historical_precision = check.historical_precision
+                frame = self.reader.read_partition(dataset, actual_partition)
                 filtered = _filter_ts_code(frame, ts_code)
-                path = self.reader.partition_path(dataset, partition)
+                path = self.reader.partition_path(dataset, actual_partition)
                 rows[dataset] = filtered.to_dict(orient="records")
                 inputs.append(
                     ContextInput(
                         kind="mart",
                         name=dataset,
-                        status="ready",
+                        status=status,
                         content_hash=_file_sha256(path / "_meta.json"),
                         path=str(path),
-                        details={"partition": partition, "rows": len(filtered)},
+                        details={
+                            "partition": actual_partition,
+                            "requested_partition": requested_partition,
+                            "partition_mode": partition_mode,
+                            "historical_precision": historical_precision,
+                            "rows": len(filtered),
+                        },
                     )
                 )
                 if filtered.empty:
@@ -402,6 +446,167 @@ def _file_sha256(path: Path) -> str | None:
         for chunk in iter(lambda: file.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def validate_context_dependencies(
+    payload: dict[str, Any],
+    *,
+    expected_as_of: str | None = None,
+    expected_trade_days: int | None = None,
+    expected_windows: list[int] | None = None,
+) -> dict[str, Any]:
+    flags: list[str] = []
+    stale_inputs: list[dict[str, Any]] = []
+    if expected_as_of and str(payload.get("as_of")) != expected_as_of:
+        flags.append("stale_context_as_of")
+    window = dict(payload.get("window") or {})
+    if expected_trade_days is not None and window.get("trade_days") != expected_trade_days:
+        flags.append("stale_context_trade_days")
+    if expected_windows is not None:
+        current_windows = [int(item) for item in window.get("feature_windows") or []]
+        if sorted(current_windows) != sorted(int(item) for item in expected_windows):
+            flags.append("stale_context_feature_windows")
+
+    for item in payload.get("inputs") or []:
+        expected_hash = item.get("content_hash")
+        path = item.get("path")
+        if not expected_hash or not path:
+            continue
+        hash_path = _hash_target(Path(str(path)))
+        actual_hash = _file_sha256(hash_path) if hash_path else None
+        if actual_hash != expected_hash:
+            stale_inputs.append(
+                {
+                    "kind": item.get("kind"),
+                    "name": item.get("name"),
+                    "path": str(hash_path) if hash_path else path,
+                    "expected_hash": expected_hash,
+                    "actual_hash": actual_hash,
+                }
+            )
+    if stale_inputs:
+        flags.append("stale_context_inputs")
+    return {
+        "status": "stale" if flags else "ready",
+        "flags": flags,
+        "stale_inputs": stale_inputs,
+    }
+
+
+def _hash_target(path: Path) -> Path | None:
+    if path.is_dir():
+        candidate = path / "_meta.json"
+        return candidate if candidate.exists() else None
+    return path if path.exists() else None
+
+
+def _agent_guidance(
+    *,
+    pack_type: str,
+    data_gaps: list[dict[str, Any]],
+    feature_rows: list[dict[str, Any]] | None = None,
+    dataset_checks: list[dict[str, Any]] | None = None,
+    inputs: list[ContextInput] | None = None,
+) -> dict[str, Any]:
+    supported: list[str] = []
+    unsupported: list[str] = []
+    suggested_drilldowns: list[dict[str, Any]] = []
+    external_needed: list[dict[str, Any]] = []
+    precision_notes: list[dict[str, Any]] = []
+
+    for row in feature_rows or []:
+        quality = dict(row.get("quality") or {})
+        for claim in quality.get("supported_claims") or []:
+            _append_unique(supported, str(claim))
+        for claim in quality.get("unsupported_claims") or []:
+            _append_unique(unsupported, str(claim))
+        for component, details in (quality.get("component_quality") or {}).items():
+            component_details = dict(details or {})
+            if component_details.get("historical_precision") == "approximate":
+                precision_notes.append(
+                    {
+                        "kind": "feature_component",
+                        "name": f"{row.get('feature')}:{component}",
+                        "requested_partition": component_details.get("requested_partition", {}),
+                        "partition": component_details.get("partition", {}),
+                        "partition_mode": component_details.get("partition_mode"),
+                        "message": "latest_available snapshot used inside feature enrichment",
+                    }
+                )
+        path = row.get("path")
+        if path:
+            suggested_drilldowns.append(
+                {
+                    "kind": "feature",
+                    "name": f"{row.get('feature')}:{row.get('partition', {}).get('window') or row.get('window')}",
+                    "path": path,
+                    "reason": "candidate screening and ranking",
+                }
+            )
+
+    for check in dataset_checks or []:
+        if check.get("status") == "ready" and check.get("path"):
+            suggested_drilldowns.append(
+                {
+                    "kind": "mart",
+                    "name": check.get("dataset"),
+                    "path": check.get("path"),
+                    "reason": "fact verification",
+                }
+            )
+
+    for gap in data_gaps:
+        kind = gap.get("kind")
+        if kind == "evidence":
+            _append_unique(unsupported, "外部产业证据验证")
+            external_needed.append({"name": gap.get("name"), "reason": gap.get("message", "no matching evidence records")})
+        elif kind == "knowledge":
+            _append_unique(unsupported, "可复用产业链和公司关系映射")
+        elif kind == "feature":
+            _append_unique(unsupported, str(gap.get("name")))
+
+    for item in inputs or []:
+        details = item.details
+        if details.get("historical_precision") == "approximate":
+            precision_notes.append(
+                {
+                    "kind": item.kind,
+                    "name": item.name,
+                    "requested_partition": details.get("requested_partition", {}),
+                    "partition": details.get("partition", {}),
+                    "partition_mode": details.get("partition_mode"),
+                    "message": "latest_available snapshot used for slow-variable identity or membership mapping",
+                }
+            )
+
+    if pack_type == "market_structure":
+        _append_unique(supported, "市场结构初步分析")
+        _append_unique(unsupported, "公司基本面兑现验证")
+        _append_unique(unsupported, "订单真实落地验证")
+        _append_unique(unsupported, "筹码集中度判断")
+    elif pack_type == "stock":
+        _append_unique(unsupported, "公司基本面兑现验证")
+        _append_unique(unsupported, "订单真实落地验证")
+
+    return {
+        "schema": "ashare.agent_guidance.v1",
+        "supported_claims": supported,
+        "unsupported_claims": unsupported,
+        "suggested_drilldowns": suggested_drilldowns[:50],
+        "external_evidence_needed": external_needed,
+        "precision_notes": precision_notes,
+        "reasoning_constraints": [
+            "Use mart rows and evidence records as facts.",
+            "Treat feature scores as screening signals, not conclusions.",
+            "Record unverified explanations as hypotheses.",
+            "Do not promote hypotheses into knowledge without proposal and acceptance.",
+        ],
+    }
+
+
+def _append_unique(items: list[str], value: str) -> None:
+    if value and value not in items:
+        items.append(value)
 
 
 def _slug(value: str) -> str:

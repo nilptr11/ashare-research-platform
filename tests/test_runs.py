@@ -21,8 +21,10 @@ def test_run_recorder_records_and_replays(tmp_path):
     run_dir = Path(manifest["path"])
     assert (run_dir / "run.json").exists()
     assert (run_dir / "context_pack.json").exists()
+    assert (run_dir / "agent_reasoning.json").exists()
     assert "not a factual source" in (run_dir / "report.md").read_text(encoding="utf-8")
     assert manifest["protocol_id"] == "user_directed.v1"
+    assert manifest["agent_reasoning"]["status"] == "not_provided"
     assert manifest["quality_gates"]["status"] == "warning"
 
     replay = replay_run(run_dir)
@@ -51,6 +53,23 @@ def test_cli_runs_record_list_replay(capsys, tmp_path):
     context_path = tmp_path / "context.json"
     ContextPackBuilder(tmp_path).build_market_structure(as_of="20260623", output_path=context_path)
     runs_dir = tmp_path / "runs"
+    reasoning_path = tmp_path / "agent_reasoning.json"
+    reasoning_path.write_text(
+        json.dumps(
+            {
+                "schema": "ashare.agent_reasoning.v1",
+                "status": "provided",
+                "facts_used": [],
+                "inferences": ["市场结构偏强"],
+                "hypotheses": ["算力链可能有事件催化"],
+                "unverified_claims": [],
+                "validation_steps": [],
+                "open_questions": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
 
     exit_code = main(
         [
@@ -64,6 +83,8 @@ def test_cli_runs_record_list_replay(capsys, tmp_path):
             "20260623",
             "--context-pack",
             str(context_path),
+            "--agent-reasoning",
+            str(reasoning_path),
             "--runs-dir",
             str(runs_dir),
             "--run-id",
@@ -74,6 +95,7 @@ def test_cli_runs_record_list_replay(capsys, tmp_path):
     record_payload = json.loads(capsys.readouterr().out)
     run_dir = record_payload["path"]
     assert record_payload["protocol_id"] == "user_directed.v1"
+    assert record_payload["agent_reasoning"]["status"] == "provided"
 
     exit_code = main(["--data-dir", str(tmp_path), "runs", "list", "--runs-dir", str(runs_dir), "--format", "json"])
     assert exit_code == 0
