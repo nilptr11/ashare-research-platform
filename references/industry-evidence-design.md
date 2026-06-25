@@ -4,16 +4,17 @@ Updated: 2026-06-24
 
 ## Purpose
 
-The industry evidence layer captures industry-specific facts that do not fit the core A-share Tushare provider: commodity prices, capacity, inventory, utilization, orders, tenders, overseas capex, policy, and association data.
+The industry evidence layer captures industry-specific facts that do not fit the core A-share mart datasets: commodity prices, capacity, inventory, utilization, orders, tenders, overseas capex, policy, and association data.
 
 The intended workflow is hybrid:
 
 ```text
 research question
-  -> LLM search prompt
+  -> Codex-directed source discovery
   -> structured evidence JSON
   -> evidence validation and scoring
-  -> industry_evidence_bundle
+  -> evidence_store
+  -> context_pack
   -> high-repeat sources promoted into adapters
 ```
 
@@ -21,19 +22,20 @@ Prompt search is for exploration and long-tail facts. Adapters are for stable, r
 
 ## Boundary
 
-Do not put this layer into `AShareProvider.call()`. That API is tied to Tushare registry metadata, Tushare permission checks, and A-share cache behavior.
+Do not put this layer into mart maintenance or connector calls as analysis judgment. Connectors fetch source records; evidence records are curated, validated, deduplicated, scored, and then read by context packs.
 
-Recommended future structure:
+Runtime structure:
 
 ```text
 prompts/industry-evidence-prompt.md
 references/industry-source-registry.json
 references/industry-source-maps.json
 
-future runtime, only after design approval:
-src/ashare_data_provider/industry_evidence/
+src/ashare_research/evidence/
   schemas.py
-  bundle.py
+  store.py
+  quality.py
+  scoring.py
   adapters/
 ```
 

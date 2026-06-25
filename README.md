@@ -2,11 +2,9 @@
 
 可复现、可审计、可扩展的 A 股研究数据平台。
 
-本项目已按 [重构架构文档](docs/refactor-architecture.md) 完成主干绿地重构。旧 `ashare_data_provider` 代码和旧脚本入口已经从运行路径移除；新运行入口是 `ashare_research` 包和 `ashare` CLI。
-
 ## 定位
 
-新架构将项目拆成清晰的数据研究链路：
+项目拆成清晰的数据研究链路：
 
 ```text
 connectors
@@ -213,19 +211,9 @@ uv run ashare --data-dir /path/to/data data list
 - `reports/` 和 `runs/` 只保存输出和留痕，不回流为事实源。
 - 外部证据不能覆盖项目内已有行情、财务和公告事实。
 
-## 当前状态
-
-本仓库主干入口已切换到新架构：
+## 当前入口
 
 - 项目名：`ashare-research-platform`
 - Python 包名：`ashare_research`
 - CLI：`ashare`
 - schema namespace：`ashare.*`
-
-`references/` 和 `prompts/` 中仍可能保留旧 Provider 时代的说明，它们只作为迁移参考，不代表当前运行入口。
-
-下一阶段会继续落地：
-
-- 更多 connectors：公告、巨潮、政策、招投标等。
-- 更多 feature：concept_strength、leader_validation、elasticity_candidates。
-- 更多站点级 adapter 和外部搜索流程。
