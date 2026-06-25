@@ -19,12 +19,11 @@ class ProtocolSpec:
     title: str
     version: str
     status: str
-    required_contexts: tuple[str, ...]
+    required_inputs: tuple[str, ...]
     optional_inputs: tuple[str, ...] = ()
     required_sections: tuple[str, ...] = ()
     forbidden: tuple[str, ...] = ()
     output_schema: str | None = None
-    suggested_capabilities: tuple[str, ...] = ()
     gap_policy: dict[str, str] = field(default_factory=dict)
     quality_gates: tuple[str, ...] = ()
     description: str = ""
@@ -38,12 +37,11 @@ class ProtocolSpec:
             title=str(normalized["title"]),
             version=str(normalized.get("version", "v1")),
             status=str(normalized.get("status", "registered_protocol")),
-            required_contexts=tuple(str(item) for item in normalized.get("required_contexts", ())),
+            required_inputs=tuple(str(item) for item in normalized.get("required_inputs", ())),
             optional_inputs=tuple(str(item) for item in normalized.get("optional_inputs", ())),
             required_sections=tuple(str(item) for item in normalized.get("required_sections", ())),
             forbidden=tuple(str(item) for item in normalized.get("forbidden", ())),
             output_schema=normalized.get("output_schema"),
-            suggested_capabilities=tuple(str(item) for item in normalized.get("suggested_capabilities", ())),
             gap_policy={str(key): str(value) for key, value in normalized.get("gap_policy", {}).items()},
             quality_gates=tuple(str(item) for item in normalized.get("quality_gates", ())),
             description=str(normalized.get("description", "")),
@@ -57,12 +55,11 @@ class ProtocolSpec:
             "version": self.version,
             "status": self.status,
             "description": self.description,
-            "required_contexts": list(self.required_contexts),
+            "required_inputs": list(self.required_inputs),
             "optional_inputs": list(self.optional_inputs),
             "required_sections": list(self.required_sections),
             "forbidden": list(self.forbidden),
             "output_schema": self.output_schema,
-            "suggested_capabilities": list(self.suggested_capabilities),
             "gap_policy": dict(self.gap_policy),
             "quality_gates": list(self.quality_gates),
         }
@@ -75,8 +72,8 @@ def validate_protocol(spec: ProtocolSpec) -> ProtocolSpec:
         raise ProtocolError(f"{spec.protocol_id}: title is required")
     if spec.status not in {"ad_hoc_protocol", "prompt_backed_protocol", "registered_protocol"}:
         raise ProtocolError(f"{spec.protocol_id}: invalid status {spec.status!r}")
-    if not spec.required_contexts:
-        raise ProtocolError(f"{spec.protocol_id}: at least one required context is required")
+    if not spec.required_inputs:
+        raise ProtocolError(f"{spec.protocol_id}: at least one required input is required")
     if not spec.required_sections:
         raise ProtocolError(f"{spec.protocol_id}: required_sections is required")
     if not spec.output_schema:

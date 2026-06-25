@@ -1,6 +1,6 @@
 # 产业链研究 Playbook
 
-这是示例路径，不是强制工作流。Codex 应根据用户问题和 `codex/data-map.md` 选择最小必要数据。
+这是示例路径，不是强制工作流。LLM agent 应根据用户问题和 `references/data-map.md` 选择最小必要数据。
 
 ## 适用问题
 
@@ -37,7 +37,7 @@ uv run ashare evidence search --company COMPANY --format json
 uv run ashare knowledge search --entity COMPANY --format json
 ```
 
-5. 本地数据不足时，根据 `codex/source-registry.md` 补权威来源。
+5. 本地数据不足时，根据 `references/source-registry.md` 补权威来源。
 
 6. 用户要求结构化产物时，按 `industry_chain_selection.v1` 输出结构化结论。
 

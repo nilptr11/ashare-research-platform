@@ -11,7 +11,7 @@ uv run ashare feature read market_strength --as-of YYYYMMDD --window 20 --format
 uv run ashare feature read limit_sentiment --as-of YYYYMMDD --window 20 --format json
 ```
 
-已有 market context 快照时可以读取；没有快照时不要为了套路径强行生成。
+没有必要为了套路径生成中间快照；直接读取相关 mart、feature、evidence 和 knowledge。
 
 ## 输出重点
 

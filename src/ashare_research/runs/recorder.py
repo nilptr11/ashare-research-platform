@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from ..capabilities import CapabilityRegistry
 from ..evidence import EvidenceStore
 from ..knowledge import KnowledgeStore
 from ..paths import default_data_dir, default_runs_dir
@@ -36,8 +35,8 @@ class RunRecorder:
         as_of: str,
         protocol_id: str | None = None,
         ad_hoc_protocol: dict[str, Any] | None = None,
-        capability_ids: list[str] | None = None,
-        context_pack_paths: list[Path | str] | None = None,
+        mart_refs: list[str] | None = None,
+        feature_refs: list[str] | None = None,
         evidence_path: Path | str | None = None,
         knowledge_path: Path | str | None = None,
         model_output: str | None = None,
@@ -54,8 +53,8 @@ class RunRecorder:
 
         question_artifact = self._write_text(run_dir / "question.md", question, kind="question")
         protocol_artifact = self._write_json(run_dir / "protocol.json", protocol.to_dict(), kind="protocol")
-        capability_artifacts = self._write_capabilities(run_dir, capability_ids or [])
-        context_artifacts, context_payloads = self._copy_context_packs(run_dir, context_pack_paths or [])
+        data_refs_payload = _data_refs_payload(as_of=as_of, mart_refs=mart_refs or [], feature_refs=feature_refs or [])
+        data_refs_artifact = self._write_json(run_dir / "data_refs.json", data_refs_payload, kind="data_refs")
         evidence_artifact = self._copy_or_create_evidence(run_dir, evidence_path)
         knowledge_artifact = self._copy_or_create_knowledge(run_dir, knowledge_path)
         raw_output_artifact = self._write_text(run_dir / "model_output.raw.md", model_output or "", kind="model_output_raw")
@@ -65,9 +64,11 @@ class RunRecorder:
         reasoning_artifact = self._write_json(run_dir / "agent_reasoning.json", reasoning_payload, kind="agent_reasoning")
         quality_payload = evaluate_quality_gates(
             protocol=protocol,
-            context_packs=context_payloads,
+            data_refs=data_refs_payload,
             as_of=as_of,
             has_validated_output=validated_output is not None,
+            evidence_artifact=evidence_artifact.to_dict(),
+            knowledge_artifact=knowledge_artifact.to_dict(),
         )
         quality_artifact = self._write_json(run_dir / "quality_gates.json", quality_payload, kind="quality_gates")
         report_text = report or render_trace_report(
@@ -75,8 +76,7 @@ class RunRecorder:
             question=question,
             as_of=as_of,
             protocol=protocol,
-            capability_artifacts=capability_artifacts,
-            context_artifacts=context_artifacts,
+            data_refs_artifact=data_refs_artifact,
             evidence_artifact=evidence_artifact,
             knowledge_artifact=knowledge_artifact,
             quality_gates=quality_payload,
@@ -91,11 +91,10 @@ class RunRecorder:
             protocol_version=protocol.version,
             question=question_artifact,
             protocol=protocol_artifact,
-            capabilities=tuple(capability_artifacts),
-            context_packs=tuple(context_artifacts),
+            data_refs=data_refs_artifact,
             evidence=evidence_artifact,
             knowledge=knowledge_artifact,
-            model={"provider": "codex", "name": "codex", "temperature": None},
+            model={"provider": "llm_agent", "name": "unspecified", "temperature": None},
             agent_reasoning=reasoning_payload,
             quality_gates=quality_payload,
             outputs={
@@ -123,7 +122,6 @@ class RunRecorder:
                     "run_id": payload.get("run_id", run_dir.name),
                     "as_of": payload.get("as_of"),
                     "protocol_id": payload.get("protocol_id"),
-                    "capabilities": len(payload.get("capabilities") or []),
                     "quality_status": payload.get("quality_gates", {}).get("status"),
                     "path": str(run_dir),
                 }
@@ -136,28 +134,6 @@ class RunRecorder:
         if not protocol_id:
             return _user_directed_protocol(question)
         return ProtocolRegistry.builtin().require(protocol_id)
-
-    def _write_capabilities(self, run_dir: Path, capability_ids: list[str]) -> list[RunArtifact]:
-        artifacts: list[RunArtifact] = []
-        registry = CapabilityRegistry.builtin()
-        for index, capability_id in enumerate(capability_ids, start=1):
-            spec = registry.require(capability_id)
-            target = run_dir / ("capability.json" if len(capability_ids) == 1 else f"capability_{index}.json")
-            artifacts.append(self._write_json(target, spec.to_dict(), kind="capability"))
-        return artifacts
-
-    def _copy_context_packs(self, run_dir: Path, paths: list[Path | str]) -> tuple[list[RunArtifact], list[dict[str, Any]]]:
-        artifacts: list[RunArtifact] = []
-        payloads: list[dict[str, Any]] = []
-        for index, raw_path in enumerate(paths, start=1):
-            source = Path(raw_path)
-            if not source.exists():
-                raise RunError(f"context pack not found: {source}")
-            target = run_dir / ("context_pack.json" if len(paths) == 1 else f"context_pack_{index}.json")
-            shutil.copyfile(source, target)
-            artifacts.append(_artifact(target, "context_pack"))
-            payloads.append(json.loads(target.read_text(encoding="utf-8")))
-        return artifacts, payloads
 
     def _copy_or_create_evidence(self, run_dir: Path, evidence_path: Path | str | None) -> RunArtifact:
         target = run_dir / "evidence.jsonl"
@@ -211,6 +187,31 @@ def _timestamp_for_id(value: str) -> str:
     return value.replace("-", "").replace(":", "").replace("+", "_")
 
 
+def _data_refs_payload(*, as_of: str, mart_refs: list[str], feature_refs: list[str]) -> dict[str, Any]:
+    return {
+        "schema": "ashare.run_data_refs.v1",
+        "as_of": as_of,
+        "marts": [_parse_data_ref(ref, kind="mart") for ref in mart_refs],
+        "features": [_parse_data_ref(ref, kind="feature") for ref in feature_refs],
+    }
+
+
+def _parse_data_ref(raw: str, *, kind: str) -> dict[str, Any]:
+    name, _, partition_text = raw.partition(":")
+    partition: dict[str, str] = {}
+    if partition_text:
+        for item in partition_text.split(","):
+            key, separator, value = item.partition("=")
+            if separator and key.strip():
+                partition[key.strip()] = value.strip()
+    return {
+        "kind": kind,
+        "name": name.strip() or raw,
+        "raw": raw,
+        "partition": partition,
+    }
+
+
 def _user_directed_protocol(question: str) -> ProtocolSpec:
     return ProtocolSpec(
         protocol_id="user_directed.v1",
@@ -218,8 +219,8 @@ def _user_directed_protocol(question: str) -> ProtocolSpec:
         version="v1",
         status="ad_hoc_protocol",
         description="未指定注册协议时，分析约束以用户当次问题和对话中给出的框架为准。",
-        required_contexts=("user_selected_context",),
-        optional_inputs=("market_context", "industry_context", "stock_context", "evidence_records", "knowledge_snapshot"),
+        required_inputs=("user_selected_data",),
+        optional_inputs=("mart_refs", "feature_refs", "evidence_records", "knowledge_snapshot"),
         required_sections=("user_requested_output",),
         forbidden=(
             "Do not use reports/runs as factual source",

@@ -28,7 +28,7 @@
 分析前先做数据分级，并在输出中标注来源：
 
 1. **用户提供的数据**：直接使用，标注“来源：用户提供”。
-2. **项目结构化数据**：优先使用 `ashare_research` 产出的 mart 和 feature mart，标注 dataset/feature、分区日期、数据日期和元数据时间；context pack 只作为已有快照辅助。
+2. **项目结构化数据**：优先使用 `ashare_research` 产出的 mart 和 feature mart，标注 dataset/feature、分区日期、数据日期和元数据时间。
 3. **项目事件数据**：公告、业绩预告、龙虎榜、涨跌停、热门题材等优先使用已发布 mart，标注 dataset、trade_date/snapshot_date 和 source。
 4. **外部 evidence**：只有项目数据覆盖不了产业事实、海外数据、政策、招投标、capex、价格、产能等问题时使用，必须形成 `EvidenceRecord` 所需字段。
 5. **模型训练记忆中的数字**：禁止默默使用；如果必须提及，标注“可能过时，需核实”。
@@ -46,7 +46,7 @@ Feature 使用边界：
 
 - feature 是可复现的筛查、排序和聚合特征，不是策略，不是买卖信号，也不是最终事实源。
 - 不得只凭 `strength_score`、`leader_score`、`elasticity_score` 等评分下确定性结论。
-- 使用 feature 前必须检查 feature meta 或 context 中的 `inputs`、`quality_status`、`quality`、窗口和分区日期。
+- 使用 feature 前必须检查 feature meta 中的 `inputs`、`quality_status`、`quality`、窗口和分区日期。
 - 题材扩散、资金确认、涨跌停结构、龙虎榜验证等关键判断，必须回查对应 mart 明细：`dc_index`、`moneyflow_dc`、`limit_list_d`、`limit_list_ths`、`top_list` 等。
 - 如果 feature 或 mart 状态为 `degraded`、`missing`、`schema_mismatch`、`empty`，必须在结论中标注降级影响；不得把缺失值或聚合分数解释成事实。
 - 若用户另行研究策略，必须自行定义交易规则、风险约束、交易成本和回测评估；feature 在本项目内只能作为研究输入候选。
@@ -60,16 +60,16 @@ Feature 使用边界：
 
 ## 项目数据优先流程
 
-如果用户提供或项目已生成 context pack，可以按以下顺序检查；没有 context 时不要为了套流程强行生成：
+如果能调用项目 CLI/reader，优先按以下顺序检查：
 
-1. `coverage`：本次 context 覆盖的 as_of、窗口、输入分区和数据缺口。
-2. `facts.market`：指数、行业、成交、估值、广度和市场强弱。
-3. `facts.features`：市场结构、行业强度、概念强度、龙头验证、高弹性候选等可复现 feature。
-4. `facts.evidence`：已入库外部产业证据，关注 `confidence`、`verification`、`published_at` 和 `query_time`。
-5. `facts.knowledge`：行业链、实体别名、公司产品关系等慢变量知识。
-6. `data_gaps`：本次 context 明确缺失的数据和影响。
+1. `daily status`：确认 as_of、基础库、feature 质量和阻断项。
+2. mart meta/read：确认指数、行业、成交、估值、公告、财务、资金等事实分区。
+3. feature meta/read：确认市场结构、行业强度、概念强度、龙头验证、高弹性候选等可复现 feature。
+4. evidence search：检查已入库外部产业证据，关注 `confidence`、`verification`、`published_at` 和 `query_time`。
+5. knowledge search：检查行业链、实体别名、公司产品关系等慢变量知识。
+6. 明确记录缺失的数据、影响范围和是否需要外部权威来源补证。
 
-如果 context pack 或 mart 已覆盖某项事实，不得再用网络搜索覆盖它，除非来源时间更晚且能明确说明差异。
+如果 mart 已覆盖某项事实，不得再用网络搜索覆盖它，除非来源时间更晚且能明确说明差异。
 
 能调用项目 CLI/reader 时，优先收集：
 
@@ -87,9 +87,9 @@ shibor / shibor_quote / cn_ppi / cn_gdp / sf_month / us_tltr / us_trycr / eco_ca
 
 ## Data Gaps 补缺流程
 
-当 context pack 或读取过程出现 `data_gaps` 时，逐条处理：
+当读取过程发现数据缺口时，逐条处理：
 
-1. 读取缺口的 `kind`、`name`、`status`、`message` 和影响范围。
+1. 记录缺口的 `kind`、`name`、`status`、`message` 和影响范围。
 2. 判断缺口属于项目内事实还是外部产业事实。
 3. 项目内事实缺口：优先补 mart/feature；不能用外部搜索覆盖行情、财务、公告、资金等事实。
 4. 外部产业事实缺口：按 evidence schema 搜索官方、公司、协会、交易所、价格指数或招投标平台。

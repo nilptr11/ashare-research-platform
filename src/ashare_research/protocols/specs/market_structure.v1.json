@@ -5,19 +5,15 @@
   "version": "v1",
   "status": "registered_protocol",
   "description": "按时代产业方向、产业链受益路径、重估环节、龙头验证、高弹性标的、成交趋势确认组织市场结构分析。",
-  "required_contexts": [
-    "market_structure"
+  "required_inputs": [
+    "market_data",
+    "market_features"
   ],
   "optional_inputs": [
-    "industry_context",
-    "stock_context",
+    "industry_data",
+    "stock_data",
     "evidence_records",
     "knowledge_snapshot"
-  ],
-  "suggested_capabilities": [
-    "market_environment.v1",
-    "theme_strength_detection.v1",
-    "concept_membership_discovery.v1"
   ],
   "required_sections": [
     "era_direction",

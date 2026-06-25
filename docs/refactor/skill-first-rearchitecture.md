@@ -1,10 +1,10 @@
-# Codex-First 数据底座重构目标
+# Skill-First 数据底座重构目标
 
-本文档是当前重构方向的 source of truth：本项目要成为 Codex / 类 Codex 产品好用的 A 股研究数据底座和技能包，而不是固定工作流系统。
+本文档是当前重构方向的 source of truth：本项目要成为任意 LLM agent 可用的 A 股研究数据底座和 skill，而不是固定工作流系统。
 
 ## 项目定位
 
-项目目标用户是 Codex 类 coding/research agent。用户提出市场方向、产业假设或个股问题；Codex 使用本项目准备好的基础数据、数据地图、来源注册和推理约束，自主完成市场主线识别、产业链拆解、公司业务暴露度验证、候选池分层和证据缺口整理。
+项目目标用户是 LLM agent。用户提出市场方向、产业假设或个股问题；agent 使用本项目准备好的基础数据、数据地图、来源注册和推理约束，自主完成市场主线识别、产业链拆解、公司业务暴露度验证、候选池分层和证据缺口整理。
 
 项目不做：
 
@@ -20,8 +20,8 @@
 数据底座不应该根据每个问题现场生成一份专属上下文作为默认入口。更优方式是：
 
 1. 预先准备基础数据和质量状态。
-2. 预先整理本地数据地图，让 Codex 知道有什么、在哪里、能支持什么、不能支持什么。
-3. 预先整理权威来源注册，让 Codex 在本地数据不足时知道从哪里补证据。
+2. 预先整理本地数据地图，让 agent 知道有什么、在哪里、能支持什么、不能支持什么。
+3. 预先整理权威来源注册，让 agent 在本地数据不足时知道从哪里补证据。
 4. 用 prompt / skill 约束研究纪律，而不是用 workflow 锁死分析路径。
 5. 把 protocol 留给输出校验，把 run 留给复盘留痕。
 
@@ -29,29 +29,23 @@
 
 ```text
 用户问题或假设
-  -> Codex 读取 SKILL.md
-  -> 读取 codex/data-map.md，确认本地数据和边界
+  -> agent 读取 SKILL.md
+  -> 读取 references/data-map.md，确认本地数据和边界
   -> 检查数据日期、覆盖范围和质量
   -> 读取相关 mart / feature / evidence / knowledge
-  -> 数据不足时，根据 codex/source-registry.md fetch 权威来源
+  -> 数据不足时，根据 references/source-registry.md fetch 权威来源
   -> 用 prompt 约束事实、推断、假设和缺口
   -> 需要结构化产物时参考 protocol schema
   -> 需要复盘时 runs record 留痕
 ```
 
-`capabilities`、`context pack` 和 `playbook` 都是辅助层：
-
-- capability：问题到数据能力的索引。
-- context pack：可选快照和下钻便利包。
-- playbook：示例路径。
-
-它们都不应该成为默认研究入口。
+`playbook` 是示例路径，不是默认研究入口。中间快照层已从目标架构中移除；agent 应直接读取 mart、feature、evidence 和 knowledge，并在 run 中记录实际使用的数据引用。
 
 ## 目标分层
 
 ```text
 skill_interface/
-  SKILL.md、AGENTS.md、codex/README.md
+  SKILL.md、AGENTS.md
 
 data_catalog/
   数据地图、dataset specs、feature registry、质量状态
@@ -68,9 +62,6 @@ semantic_layer/
 evidence_layer/
   curated evidence、adapter candidates、accepted adapters
 
-optional_context_layer/
-  market / industry / stock 快照，不承载默认流程
-
 protocol_layer/
   输出 schema、质量门、结构化结果约束
 
@@ -84,12 +75,10 @@ run_layer/
 SKILL.md
 AGENTS.md
 
-codex/
-  README.md
+references/
   data-map.md
   source-registry.md
   reasoning-policy.md
-  capability-map.md
   data-access-guide.md
   playbooks/
 
@@ -112,8 +101,6 @@ src/ashare_research/
   features/
   evidence/
   knowledge/
-  capabilities/
-  context_packs/
   protocols/
   runs/
   reports/
@@ -168,15 +155,15 @@ CLI 只承担四类职责：
 - 管理证据：ingest、search、proposal、adapter。
 - 留痕校验：protocol、run record、replay。
 
-不新增“按某个问题生成研究结果”的命令。Codex 的优势在于读取数据后自己推理，不应该被大量问题型命令限制。
+不新增“按某个问题生成研究结果”的命令。LLM agent 的优势在于读取数据后自己推理，不应该被大量问题型命令限制。
 
 ## 验收标准
 
-重构完成后，Codex 应能做到：
+重构完成后，LLM agent 应能做到：
 
 1. 读取 `SKILL.md` 后知道项目不是交易执行系统。
-2. 读取 `codex/data-map.md` 后知道本地有哪些数据、能支持什么、不能支持什么。
-3. 数据不足时能根据 `codex/source-registry.md` 找权威来源补证据。
+2. 读取 `references/data-map.md` 后知道本地有哪些数据、能支持什么、不能支持什么。
+3. 数据不足时能根据 `references/source-registry.md` 找权威来源补证据。
 4. 能区分 mart 事实、feature 信号、evidence 外部证据、knowledge 慢变量和 run 留痕。
 5. 面对产业链问题，能先拆链，再映射公司，再验证业务暴露度。
 6. 能明确写出事实、推断、假设和数据缺口。

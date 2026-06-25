@@ -2,31 +2,29 @@ import json
 from pathlib import Path
 
 from ashare_research.cli import main
-from ashare_research.context_packs import ContextPackBuilder
 from ashare_research.runs import RunRecorder, replay_run
 
 
 def test_run_recorder_records_and_replays(tmp_path):
-    context_path = tmp_path / "context.json"
-    ContextPackBuilder(tmp_path).build_market_structure(as_of="20260623", output_path=context_path)
     recorder = RunRecorder(tmp_path, runs_dir=tmp_path / "runs")
 
     manifest = recorder.record(
         question="按市场结构框架分析 AI 算力硬件链",
         as_of="20260623",
-        capability_ids=["market_environment.v1"],
-        context_pack_paths=[context_path],
+        mart_refs=["daily:trade_date=20260623"],
+        feature_refs=["market_strength:as_of=20260623,window=20"],
         run_id="test_run",
     )
 
     run_dir = Path(manifest["path"])
     assert (run_dir / "run.json").exists()
-    assert (run_dir / "context_pack.json").exists()
-    assert (run_dir / "capability.json").exists()
+    assert (run_dir / "data_refs.json").exists()
     assert (run_dir / "agent_reasoning.json").exists()
-    assert "capability: `capability.json`" in (run_dir / "report.md").read_text(encoding="utf-8")
+    assert "data_refs: `data_refs.json`" in (run_dir / "report.md").read_text(encoding="utf-8")
     assert "not a factual source" in (run_dir / "report.md").read_text(encoding="utf-8")
-    assert manifest["capabilities"][0]["kind"] == "capability"
+    data_refs = json.loads((run_dir / "data_refs.json").read_text(encoding="utf-8"))
+    assert data_refs["marts"][0]["partition"] == {"trade_date": "20260623"}
+    assert data_refs["features"][0]["partition"] == {"as_of": "20260623", "window": "20"}
     assert manifest["protocol_id"] == "user_directed.v1"
     assert manifest["agent_reasoning"]["status"] == "not_provided"
     assert manifest["quality_gates"]["status"] == "warning"
@@ -34,29 +32,26 @@ def test_run_recorder_records_and_replays(tmp_path):
     replay = replay_run(run_dir)
     assert replay["status"] == "replayable"
     assert replay["quality_status"] == "warning"
-    assert any(item["kind"] == "capability" for item in replay["artifacts"])
+    assert any(item["kind"] == "data_refs" for item in replay["artifacts"])
 
 
 def test_run_recorder_uses_registered_protocol_when_requested(tmp_path):
-    context_path = tmp_path / "context.json"
-    ContextPackBuilder(tmp_path).build_market_structure(as_of="20260623", output_path=context_path)
     recorder = RunRecorder(tmp_path, runs_dir=tmp_path / "runs")
 
     manifest = recorder.record(
         question="按市场结构框架分析 AI 算力硬件链",
         as_of="20260623",
         protocol_id="market_structure.v1",
-        context_pack_paths=[context_path],
+        mart_refs=["daily:trade_date=20260623"],
+        feature_refs=["market_strength:as_of=20260623,window=20"],
         run_id="registered_protocol_run",
     )
 
     assert manifest["protocol_id"] == "market_structure.v1"
-    assert manifest["quality_gates"]["status"] == "blocked"
+    assert manifest["quality_gates"]["status"] == "warning"
 
 
 def test_cli_runs_record_list_replay(capsys, tmp_path):
-    context_path = tmp_path / "context.json"
-    ContextPackBuilder(tmp_path).build_market_structure(as_of="20260623", output_path=context_path)
     runs_dir = tmp_path / "runs"
     reasoning_path = tmp_path / "agent_reasoning.json"
     reasoning_path.write_text(
@@ -86,10 +81,10 @@ def test_cli_runs_record_list_replay(capsys, tmp_path):
             "按市场结构框架分析 AI 算力硬件链",
             "--as-of",
             "20260623",
-            "--context-pack",
-            str(context_path),
-            "--capability",
-            "market_environment.v1",
+            "--mart-ref",
+            "daily:trade_date=20260623",
+            "--feature-ref",
+            "market_strength:as_of=20260623,window=20",
             "--agent-reasoning",
             str(reasoning_path),
             "--runs-dir",
@@ -102,14 +97,12 @@ def test_cli_runs_record_list_replay(capsys, tmp_path):
     record_payload = json.loads(capsys.readouterr().out)
     run_dir = record_payload["path"]
     assert record_payload["protocol_id"] == "user_directed.v1"
-    assert record_payload["capabilities"][0]["kind"] == "capability"
     assert record_payload["agent_reasoning"]["status"] == "provided"
 
     exit_code = main(["--data-dir", str(tmp_path), "runs", "list", "--runs-dir", str(runs_dir), "--format", "json"])
     assert exit_code == 0
     list_payload = json.loads(capsys.readouterr().out)
     assert list_payload[0]["run_id"] == "cli_run"
-    assert list_payload[0]["capabilities"] == 1
 
     exit_code = main(["--data-dir", str(tmp_path), "runs", "replay", run_dir])
     assert exit_code == 0

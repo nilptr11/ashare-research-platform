@@ -51,8 +51,7 @@ class ProtocolRegistry:
                     "status": "ready",
                     "output_schema": spec.output_schema,
                     "output_schema_status": "ready" if output_schema else "missing",
-                    "required_contexts": list(spec.required_contexts),
-                    "suggested_capabilities": list(spec.suggested_capabilities),
+                    "required_inputs": list(spec.required_inputs),
                     "quality_gates": list(spec.quality_gates),
                 }
             )

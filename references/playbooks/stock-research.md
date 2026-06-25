@@ -11,7 +11,7 @@ uv run ashare evidence search --company COMPANY --format json
 uv run ashare knowledge search --entity COMPANY --format json
 ```
 
-已有 stock context 快照时可以读取；没有快照时先直接检查 mart、evidence 和 knowledge。
+先直接检查 mart、evidence 和 knowledge，不生成中间快照。
 
 ## 输出重点
 

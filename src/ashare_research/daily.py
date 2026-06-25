@@ -7,14 +7,12 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from .context_packs import validate_context_dependencies
 from .features import FeatureRegistry, FeatureStore
 from .marts.reader import MartReader
 from .schemas import AShareResearchError
 
 
 DEFAULT_WINDOWS = (5, 20, 60)
-DEFAULT_CONTEXT_TRADE_DAYS = 60
 
 
 @dataclass(frozen=True)
@@ -213,7 +211,6 @@ def build_status(
     *,
     as_of: str,
     windows: list[int] | None = None,
-    context_trade_days: int = DEFAULT_CONTEXT_TRADE_DAYS,
 ) -> dict[str, Any]:
     windows = windows or list(DEFAULT_WINDOWS)
     tasks = daily_plan()
@@ -260,42 +257,6 @@ def build_status(
                     }
                 )
 
-    context_path = (
-        Path(reader.data_dir)
-        / "context_packs"
-        / "market_structure"
-        / f"as_of={as_of}"
-        / "context.json"
-    )
-    context_check: dict[str, Any] = {
-        "context": "market_structure",
-        "trade_days": context_trade_days,
-        "status": "ready" if context_path.exists() else "missing",
-        "path": str(context_path) if context_path.exists() else None,
-    }
-    if context_path.exists():
-        try:
-            context_payload = json.loads(context_path.read_text(encoding="utf-8"))
-            context_check["coverage"] = context_payload.get("coverage", {})
-            context_check["quality_flags"] = context_payload.get("quality_flags", [])
-            context_check["agent_guidance"] = context_payload.get("agent_guidance", {})
-            dependency_check = validate_context_dependencies(
-                context_payload,
-                expected_as_of=as_of,
-                expected_trade_days=context_trade_days,
-                expected_windows=windows,
-            )
-            context_check["dependency_check"] = dependency_check
-            if dependency_check["status"] != "ready":
-                context_check["status"] = "degraded"
-                context_check["quality_flags"] = [
-                    *context_check.get("quality_flags", []),
-                    *dependency_check.get("flags", []),
-                ]
-        except Exception as error:
-            context_check["status"] = "read_error"
-            context_check["message"] = str(error)
-
     blocking_statuses = {"missing", "schema_mismatch", "empty", "unregistered", "read_error"}
     blocking = [
         item
@@ -303,17 +264,12 @@ def build_status(
         if item.get("required") and item.get("status") in blocking_statuses
     ]
     blocking.extend(item for item in feature_checks if item.get("status") in blocking_statuses)
-    if context_check["status"] in blocking_statuses:
-        blocking.append(context_check)
 
     degraded = [
         item
         for item in [*dataset_checks, *feature_checks]
         if item.get("status") == "degraded"
     ]
-    if context_check.get("status") == "degraded" or context_check.get("quality_flags"):
-        degraded.append(context_check)
-
     warnings = [
         item
         for item in dataset_checks
@@ -348,11 +304,9 @@ def build_status(
             "features_total": len(feature_checks),
             "degraded": len(degraded),
             "warnings": len(warnings),
-            "context_ready": context_check["status"] == "ready",
         },
         "datasets": dataset_checks,
         "features": feature_checks,
-        "context": context_check,
         "blocking": blocking,
         "degraded": degraded,
         "warnings": warnings,

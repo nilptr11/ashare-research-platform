@@ -9,11 +9,8 @@ from typing import Any
 
 import pandas as pd
 
-from .capabilities import CapabilityRegistry
 from .connectors import ConnectorRegistry, TushareConnector
-from .context_packs import ContextComposer, ContextPackBuilder
 from .daily import (
-    DEFAULT_CONTEXT_TRADE_DAYS,
     build_status,
     daily_plan,
     event_days_for_daily,
@@ -51,10 +48,10 @@ def build_parser() -> argparse.ArgumentParser:
     daily_parser = subparsers.add_parser("daily", help="每日收盘后基础数据维护、验收和报告")
     daily_subparsers = daily_parser.add_subparsers(dest="daily_command", required=True)
 
-    daily_run = daily_subparsers.add_parser("run", help="更新完整日常基础库、特征和 context")
+    daily_run = daily_subparsers.add_parser("run", help="更新完整日常基础库和特征")
     _add_daily_run_args(daily_run)
 
-    daily_repair = daily_subparsers.add_parser("repair", help="只补缺失或不健康的数据，再重建特征和 context")
+    daily_repair = daily_subparsers.add_parser("repair", help="只补缺失或不健康的数据，再重建特征")
     _add_daily_run_args(daily_repair)
 
     daily_status = daily_subparsers.add_parser("status", help="查看每日维护状态")
@@ -204,7 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
     knowledge_propose = knowledge_subparsers.add_parser("propose", help="写入 proposed knowledge JSON 或 JSONL")
     knowledge_propose.add_argument("input")
     knowledge_propose.add_argument("--reason")
-    knowledge_propose.add_argument("--proposed-by", default="codex")
+    knowledge_propose.add_argument("--proposed-by", default="llm_agent")
     knowledge_propose.add_argument("--format", choices=("table", "json"), default="json")
 
     knowledge_accept = knowledge_subparsers.add_parser("accept", help="接受一个 knowledge proposal 并写入 current")
@@ -237,55 +234,6 @@ def build_parser() -> argparse.ArgumentParser:
     knowledge_taxonomy = knowledge_subparsers.add_parser("taxonomy", help="显示 knowledge 实体类型和关系白名单")
     knowledge_taxonomy.add_argument("--format", choices=("json", "table"), default="json")
 
-    context_parser = subparsers.add_parser("context", help="生成 Codex 可读 context pack")
-    context_subparsers = context_parser.add_subparsers(dest="context_command", required=True)
-
-    context_build = context_subparsers.add_parser("build", help="生成 context pack")
-    context_build_subparsers = context_build.add_subparsers(dest="context_pack_type", required=True)
-
-    context_market = context_build_subparsers.add_parser("market-structure", help="生成市场结构 context pack")
-    context_market.add_argument("--as-of", required=True)
-    context_market.add_argument("--trade-days", type=int, default=120)
-    context_market.add_argument("--output")
-    context_market.add_argument("--format", choices=("table", "json"), default="json")
-
-    context_industry = context_build_subparsers.add_parser("industry", help="生成行业 context pack")
-    context_industry.add_argument("industry")
-    context_industry.add_argument("--as-of", required=True)
-    context_industry.add_argument("--output")
-    context_industry.add_argument("--format", choices=("table", "json"), default="json")
-
-    context_stock = context_build_subparsers.add_parser("stock", help="生成个股 context pack")
-    context_stock.add_argument("ts_code")
-    context_stock.add_argument("--as-of", required=True)
-    context_stock.add_argument("--output")
-    context_stock.add_argument("--format", choices=("table", "json"), default="json")
-
-    context_compose = context_subparsers.add_parser("compose", help="按 capability 动态组装 Codex context")
-    context_compose.add_argument("--capability", action="append", required=True, help="研究能力 ID，可重复")
-    context_compose.add_argument("--as-of", required=True)
-    context_compose.add_argument("--industry", action="append", default=[], help="行业/主题 anchor，可重复")
-    context_compose.add_argument("--stock", action="append", default=[], help="股票代码 anchor，可重复")
-    context_compose.add_argument("--trade-days", type=int, default=120)
-    context_compose.add_argument("--windows", default="5,20,60", help="逗号分隔 feature 窗口，如 5,20,60")
-    context_compose.add_argument("--question")
-    context_compose.add_argument("--output")
-    context_compose.add_argument("--format", choices=("table", "json"), default="json")
-
-    capabilities_parser = subparsers.add_parser("capabilities", help="Codex 研究能力发现")
-    capabilities_subparsers = capabilities_parser.add_subparsers(dest="capabilities_command", required=True)
-
-    capabilities_list = capabilities_subparsers.add_parser("list", help="列出可用研究能力")
-    capabilities_list.add_argument("--format", choices=("table", "json", "csv"), default="table")
-
-    capabilities_show = capabilities_subparsers.add_parser("show", help="显示一个研究能力卡片")
-    capabilities_show.add_argument("capability_id")
-    capabilities_show.add_argument("--format", choices=("table", "json"), default="json")
-
-    capabilities_validate = capabilities_subparsers.add_parser("validate", help="校验内置研究能力卡片")
-    capabilities_validate.add_argument("capability_id", nargs="?")
-    capabilities_validate.add_argument("--format", choices=("table", "json"), default="json")
-
     protocols_parser = subparsers.add_parser("protocols", help="可复用分析模板和输出质量门")
     protocols_subparsers = protocols_parser.add_subparsers(dest="protocols_command", required=True)
 
@@ -304,7 +252,7 @@ def build_parser() -> argparse.ArgumentParser:
     protocols_output_schema.add_argument("protocol_id")
     protocols_output_schema.add_argument("--format", choices=("json",), default="json")
 
-    runs_parser = subparsers.add_parser("runs", help="记录和回放 Codex 分析 run 留痕")
+    runs_parser = subparsers.add_parser("runs", help="记录和回放分析 run 留痕")
     runs_subparsers = runs_parser.add_subparsers(dest="runs_command", required=True)
 
     runs_record = runs_subparsers.add_parser("record", help="记录一次分析 run")
@@ -313,8 +261,8 @@ def build_parser() -> argparse.ArgumentParser:
     runs_record.add_argument("--as-of", required=True)
     runs_record.add_argument("--protocol", help="可选注册 protocol；不传则按用户当次指令记录为 user_directed.v1")
     runs_record.add_argument("--ad-hoc-protocol")
-    runs_record.add_argument("--capability", action="append", default=[], help="本次分析使用的 capability ID，可重复")
-    runs_record.add_argument("--context-pack", action="append", default=[])
+    runs_record.add_argument("--mart-ref", action="append", default=[], help="本次分析引用的 mart 分区，格式 DATASET:key=value[,key=value]")
+    runs_record.add_argument("--feature-ref", action="append", default=[], help="本次分析引用的 feature 分区，格式 FEATURE:as_of=YYYYMMDD,window=N")
     runs_record.add_argument("--evidence")
     runs_record.add_argument("--knowledge")
     runs_record.add_argument("--model-output-file")
@@ -356,10 +304,6 @@ def main(argv: list[str] | None = None) -> int:
             return _handle_evidence(args, reader)
         if args.command == "knowledge":
             return _handle_knowledge(args, reader)
-        if args.command == "context":
-            return _handle_context(args, reader)
-        if args.command == "capabilities":
-            return _handle_capabilities(args)
         if args.command == "protocols":
             return _handle_protocols(args)
         if args.command == "runs":
@@ -376,11 +320,9 @@ def _add_daily_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--event-days", type=int, help="公告/业绩预告自然日回看天数；默认 7")
     parser.add_argument("--windows", default="5,20,60", help="构建 feature 的窗口，如 5,20,60")
     parser.add_argument("--scoring-profile", help="feature scoring profile JSON；默认使用内置 default.v1")
-    parser.add_argument("--trade-days", type=int, default=DEFAULT_CONTEXT_TRADE_DAYS, help="market-structure context 的交易日窗口")
     parser.add_argument("--refresh", action=argparse.BooleanOptionalAction, default=True, help="覆盖当日已有分区；daily 默认可重入")
-    parser.add_argument("--skip-data", action="store_true", help="跳过 dataset 更新，只重建 feature/context")
+    parser.add_argument("--skip-data", action="store_true", help="跳过 dataset 更新，只重建 feature")
     parser.add_argument("--skip-features", action="store_true", help="跳过 feature 构建")
-    parser.add_argument("--skip-context", action="store_true", help="跳过 context pack 构建")
     parser.add_argument("--continue-on-error", action=argparse.BooleanOptionalAction, default=True, help="记录失败并继续后续任务")
     parser.add_argument("--token", help="Tushare token；默认读取 TUSHARE_TOKEN 或 .env")
     parser.add_argument("--proxy-url", help="Tushare proxy url；默认读取 TUSHARE_PROXY_URL 或 .env")
@@ -391,7 +333,6 @@ def _add_daily_run_args(parser: argparse.ArgumentParser) -> None:
 def _add_daily_status_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--as-of", help="目标交易日，YYYYMMDD；不传则按交易日历和当前时间推断")
     parser.add_argument("--windows", default="5,20,60")
-    parser.add_argument("--trade-days", type=int, default=DEFAULT_CONTEXT_TRADE_DAYS)
     parser.add_argument("--format", choices=("table", "json"), default="json")
 
 
@@ -410,7 +351,6 @@ def _handle_daily(args: argparse.Namespace, reader: MartReader) -> int:
             reader,
             as_of=as_of,
             windows=parse_daily_windows(args.windows),
-            context_trade_days=args.trade_days,
         )
         latest = read_report(reader.data_dir)
         payload["latest_report"] = _report_pointer(latest)
@@ -425,7 +365,6 @@ def _handle_daily(args: argparse.Namespace, reader: MartReader) -> int:
                 reader,
                 as_of=resolved_as_of,
                 windows=parse_daily_windows(args.windows),
-                context_trade_days=args.trade_days,
             )
             payload["report_found"] = False
         emit(payload, fmt=args.format)
@@ -442,7 +381,7 @@ def _run_daily(args: argparse.Namespace, reader: MartReader, *, repair: bool) ->
     task_results: list[dict[str, Any]] = []
 
     if repair:
-        before = build_status(reader, as_of=as_of, windows=windows, context_trade_days=args.trade_days)
+        before = build_status(reader, as_of=as_of, windows=windows)
         unready = {item["dataset"] for item in before["datasets"] if item["status"] != "ready"}
         tasks = [task for task in tasks if task.dataset in unready]
 
@@ -491,28 +430,13 @@ def _run_daily(args: argparse.Namespace, reader: MartReader, *, repair: bool) ->
                 if not args.continue_on_error:
                     raise
 
-    context_result: dict[str, Any] | None = None
-    if not args.skip_context:
-        try:
-            context_result = ContextPackBuilder(reader.data_dir, reader=reader).build_market_structure(
-                as_of=as_of,
-                trade_days=args.trade_days,
-            )
-        except Exception as error:
-            context_result = {"status": "failed", "message": str(error)}
-            if not args.continue_on_error:
-                raise
-
     status_payload = build_status(
         reader,
         as_of=as_of,
         windows=windows,
-        context_trade_days=args.trade_days,
     )
     run_blocking = [item for item in task_results if item["status"] == "failed" and item.get("required")]
     run_blocking.extend(item for item in feature_results if item["status"] == "failed")
-    if context_result and context_result.get("status") == "failed":
-        run_blocking.append(context_result)
     run_warnings = [item for item in task_results if item["status"] == "failed" and not item.get("required")]
 
     if run_blocking or status_payload["status"] == "blocked":
@@ -532,10 +456,8 @@ def _run_daily(args: argparse.Namespace, reader: MartReader, *, repair: bool) ->
         "refresh": args.refresh,
         "event_days": event_days,
         "windows": windows,
-        "trade_days": args.trade_days,
         "tasks": task_results,
         "features": feature_results,
-        "context": _context_summary(context_result),
         "status_check": status_payload,
         "blocking": [*run_blocking, *status_payload["blocking"]],
         "warnings": [*run_warnings, *status_payload["warnings"]],
@@ -574,21 +496,6 @@ def _daily_dataset_args(args: argparse.Namespace, task, *, as_of: str, event_day
     }
     payload.update(params)
     return argparse.Namespace(**payload)
-
-
-def _context_summary(payload: dict[str, Any] | None) -> dict[str, Any] | None:
-    if payload is None:
-        return None
-    if payload.get("status") == "failed":
-        return payload
-    return {
-        "status": "ready",
-        "schema": payload.get("schema"),
-        "pack_id": payload.get("pack_id"),
-        "path": payload.get("path"),
-        "coverage": payload.get("coverage"),
-        "quality_flags": payload.get("quality_flags"),
-    }
 
 
 def _report_pointer(payload: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -1401,63 +1308,6 @@ def _handle_knowledge(args: argparse.Namespace, reader: MartReader) -> int:
     raise AShareResearchError(f"unknown knowledge command: {args.knowledge_command}")
 
 
-def _handle_context(args: argparse.Namespace, reader: MartReader) -> int:
-    builder = ContextPackBuilder(reader.data_dir, reader=reader)
-    if args.context_command == "build":
-        if args.context_pack_type == "market-structure":
-            payload = builder.build_market_structure(
-                as_of=args.as_of,
-                trade_days=args.trade_days,
-                output_path=args.output,
-            )
-            emit(payload, fmt=args.format)
-            return 0
-        if args.context_pack_type == "industry":
-            payload = builder.build_industry(
-                industry=args.industry,
-                as_of=args.as_of,
-                output_path=args.output,
-            )
-            emit(payload, fmt=args.format)
-            return 0
-        if args.context_pack_type == "stock":
-            payload = builder.build_stock(
-                ts_code=args.ts_code,
-                as_of=args.as_of,
-                output_path=args.output,
-            )
-            emit(payload, fmt=args.format)
-            return 0
-    if args.context_command == "compose":
-        payload = ContextComposer(reader.data_dir, reader=reader).compose(
-            capability_ids=args.capability,
-            as_of=args.as_of,
-            industries=args.industry,
-            stocks=args.stock,
-            trade_days=args.trade_days,
-            windows=parse_daily_windows(args.windows),
-            question=args.question,
-            output_path=args.output,
-        )
-        emit(payload, fmt=args.format)
-        return 0
-    raise AShareResearchError(f"unknown context command: {args.context_command}")
-
-
-def _handle_capabilities(args: argparse.Namespace) -> int:
-    registry = CapabilityRegistry.builtin()
-    if args.capabilities_command == "list":
-        emit([spec.summary() for spec in registry.list()], fmt=args.format)
-        return 0
-    if args.capabilities_command == "show":
-        emit(registry.require(args.capability_id).to_dict(), fmt=args.format)
-        return 0
-    if args.capabilities_command == "validate":
-        emit(registry.validate(args.capability_id), fmt=args.format)
-        return 0
-    raise AShareResearchError(f"unknown capabilities command: {args.capabilities_command}")
-
-
 def _handle_protocols(args: argparse.Namespace) -> int:
     registry = ProtocolRegistry.builtin()
     if args.protocols_command == "list":
@@ -1490,8 +1340,8 @@ def _handle_runs(args: argparse.Namespace, reader: MartReader) -> int:
             as_of=args.as_of,
             protocol_id=args.protocol,
             ad_hoc_protocol=ad_hoc_protocol,
-            capability_ids=args.capability,
-            context_pack_paths=[Path(path) for path in args.context_pack],
+            mart_refs=args.mart_ref,
+            feature_refs=args.feature_ref,
             evidence_path=Path(args.evidence) if args.evidence else None,
             knowledge_path=Path(args.knowledge) if args.knowledge else None,
             model_output=model_output,

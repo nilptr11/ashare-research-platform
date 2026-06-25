@@ -1,23 +1,23 @@
 # ashare-research-platform
 
-可复现、可审计、可扩展的 Codex-first A 股研究数据底座。
+可复现、可审计、可扩展的 LLM skill A 股研究数据底座。
 
 ## 项目定位
 
-本项目定位为 **Codex-first 的 A 股研究数据底座和技能包**。它不内置 Agent runtime，而是向 Codex / 类 Codex 产品提供已准备好的基础数据、数据地图、权威来源注册、少量维护/校验工具、prompt 边界、protocol schema 和 run 留痕。
+本项目定位为 **LLM skill 风格的 A 股研究数据底座**。它不内置 Agent runtime，而是向任意 LLM agent 提供已准备好的基础数据、数据地图、权威来源注册、少量维护/校验工具、prompt 边界、protocol schema 和 run 留痕。
 
-本项目不是自动化交易系统，也不做交易执行、下单、仓位指令、机械止盈止损或收益承诺。任何来自 feature、context、protocol 或 run 的产物都只能作为研究输入或研究输出，不能被解释为直接买卖建议。
+本项目不是自动化交易系统，也不做交易执行、下单、仓位指令、机械止盈止损或收益承诺。任何来自 feature、protocol 或 run 的产物都只能作为研究输入或研究输出，不能被解释为直接买卖建议。
 
 核心目标：
 
-- 用可复现数据支持 Codex 判断市场主线、行业强弱、题材扩散、龙头验证和高弹性候选。
+- 用可复现数据支持 LLM agent 判断市场主线、行业强弱、题材扩散、龙头验证和高弹性候选。
 - 用 evidence 和 knowledge 补足产业链、公司产品、客户、订单、产能、价格、capex、政策等项目内行情数据覆盖不了的事实。
 - 把候选股研究输出限定在 `核心研究`、`弹性观察`、`补涨观察`、`待补证据`、`排除` 等研究状态。
 - 通过数据地图、来源注册、protocol 和 run 留痕，让每次 Agent 结论能追溯到数据分区、证据来源和质量门。
 
-Codex 使用入口见 [`SKILL.md`](SKILL.md)、[`AGENTS.md`](AGENTS.md) 和 [`codex/README.md`](codex/README.md)。
+Skill 使用入口见 [`SKILL.md`](SKILL.md)、[`AGENTS.md`](AGENTS.md) 和 [`references/data-map.md`](references/data-map.md)。
 产业链研究示例路径见 [`docs/playbooks/industry-chain-selection-playbook.md`](docs/playbooks/industry-chain-selection-playbook.md)。
-Codex-first 目标架构重构提案见 [`docs/refactor/codex-first-rearchitecture.md`](docs/refactor/codex-first-rearchitecture.md)。
+Skill-first 目标架构重构提案见 [`docs/refactor/skill-first-rearchitecture.md`](docs/refactor/skill-first-rearchitecture.md)。
 
 非目标：
 
@@ -36,8 +36,7 @@ connectors
   -> datasets / mart / feature_mart
   -> evidence_store
   -> knowledge_base
-  -> codex data map / source registry
-  -> optional capabilities / context snapshots
+  -> skill references / source registry
   -> protocols
   -> reports / runs
 ```
@@ -59,16 +58,11 @@ connectors
 - `EvidenceAdapterRegistry`：把高频数值证据 candidate 晋升为 proposed adapter spec。
 - `KnowledgeStore`：保存可追溯的实体、别名、产业链节点和关系。
 - `ashare knowledge`：通过 proposal/accept 流程维护慢变量知识库。
-- `codex/data-map.md`：告诉 Codex 本地已准备数据、适用问题和结论边界。
-- `codex/source-registry.md`：告诉 Codex 数据不足时应从哪些权威来源补证据。
-- `CapabilityRegistry`：注册 Codex 可读取的研究能力卡片，作为问题到数据的辅助索引。
-- `ashare capabilities`：发现研究能力、输入数据和判断边界；不是默认工作流入口。
-- `ContextComposer`：按 capability 生成可选上下文索引。
-- `ContextPackBuilder`：确定性生成可下钻的 market/industry/stock context pack。
-- `ashare context`：生成可选快照和下钻便利包；不生成分析结论。
+- `references/data-map.md`：告诉 LLM agent 本地已准备数据、适用问题和结论边界。
+- `references/source-registry.md`：告诉 LLM agent 数据不足时应从哪些权威来源补证据。
 - `ProtocolRegistry`：注册可复用分析模板和质量门；不强制默认分析框架。
 - `industry_chain_selection.v1`：面向 Agent 的主线选股与产业链拆解协议，输出候选池、证据矩阵和后续跟踪清单，不输出交易指令。
-- `RunRecorder`：保存 Codex 分析 run 的问题、上下文、输出和质量门留痕。
+- `RunRecorder`：保存 LLM agent 分析 run 的问题、数据引用、输出和质量门留痕。
 - `source_policy`：声明事实源优先级和不可回流规则。
 - `reports`：生成 run trace report，报告本身不作为事实源。
 
@@ -131,14 +125,6 @@ uv run ashare data build trade_cal --exchange SSE --start-date 20260601 --end-da
 TushareConnector -> data/raw/... -> MartPublisher -> data/mart/...
 ```
 
-发现 Codex 研究能力：
-
-```bash
-uv run ashare capabilities list
-uv run ashare capabilities show theme_strength_detection.v1
-uv run ashare capabilities validate --format json
-```
-
 读取 mart 分区元数据：
 
 ```bash
@@ -171,7 +157,7 @@ uv run ashare feature read market_strength --as-of 20260623 --window 5 --limit 1
 uv run ashare feature meta limit_sentiment --as-of 20260623 --window 5
 ```
 
-Feature 是可复现的分析特征，不是策略，也不是最终事实源。Codex 使用 feature 时必须遵守：
+Feature 是可复现的分析特征，不是策略，也不是最终事实源。LLM agent 使用 feature 时必须遵守：
 
 - feature 只用于筛查、排序、聚合展示和发现候选信号。
 - 不能只凭 `strength_score`、`leader_score`、`elasticity_score` 等评分下结论。
@@ -206,32 +192,22 @@ uv run ashare knowledge search --entity 长飞光纤 --format json
 uv run ashare knowledge snapshot --output data/knowledge/snapshot.json
 ```
 
-Codex 默认只能写入 proposed knowledge；进入 `current.jsonl` 的记录必须先被 `accept`。写入前应先查看 `knowledge taxonomy`，避免发明实体类型或 predicate。
+LLM agent 默认只能写入 proposed knowledge；进入 `current.jsonl` 的记录必须先被 `accept`。写入前应先查看 `knowledge taxonomy`，避免发明实体类型或 predicate。
 
-按需生成 context 快照。Context 是可选下钻工具，不是 Codex 默认研究入口；需要把一组底层事实固化成快照时再使用：
-
-```bash
-uv run ashare context build market-structure --as-of 20260623 --trade-days 120
-uv run ashare context build industry ai_infrastructure --as-of 20260623
-uv run ashare context build stock 603938.SH --as-of 20260623
-```
-
-Context pack 会写入 input hash、coverage、data gaps、quality flags 和 provenance。缺失数据不会被吞掉，会进入 `data_gaps`。
-
-查看可复用 protocol 模板并记录 run。Protocol 不是默认强制框架；`suggested_capabilities` 只提示可参考的数据能力。Codex 分析时优先服从用户当次指令。只有当你显式传 `--protocol`，或某个框架反复使用并稳定后，才需要引用注册模板。
+查看可复用 protocol 模板并记录 run。Protocol 不是默认强制框架；LLM agent 分析时优先服从用户当次指令。只有当你显式传 `--protocol`，或某个框架反复使用并稳定后，才需要引用注册模板。
 
 ```bash
 uv run ashare protocols list
 uv run ashare protocols validate market_structure.v1
 uv run ashare protocols output-schema market_structure.v1
-uv run ashare runs record --question "按我刚才给的框架分析 AI 算力硬件链" --as-of 20260623 --capability theme_strength_detection.v1 --context-pack data/context_packs/market_structure/as_of=20260623/context.json
-uv run ashare runs record --question "按市场结构模板分析 AI 算力硬件链" --protocol market_structure.v1 --as-of 20260623 --capability market_environment.v1 --context-pack data/context_packs/market_structure/as_of=20260623/context.json
-uv run ashare runs record --question "按主线选股与产业链拆解协议分析 AI 算力硬件链" --protocol industry_chain_selection.v1 --as-of 20260623 --capability theme_strength_detection.v1 --capability company_exposure_validation.v1 --context-pack data/context_packs/market_structure/as_of=20260623/context.json --validated-output output.json
+uv run ashare runs record --question "按我刚才给的框架分析 AI 算力硬件链" --as-of 20260623 --mart-ref daily:trade_date=20260623 --feature-ref market_strength:as_of=20260623,window=20
+uv run ashare runs record --question "按市场结构模板分析 AI 算力硬件链" --protocol market_structure.v1 --as-of 20260623 --mart-ref daily:trade_date=20260623 --feature-ref market_strength:as_of=20260623,window=20
+uv run ashare runs record --question "按主线选股与产业链拆解协议分析 AI 算力硬件链" --protocol industry_chain_selection.v1 --as-of 20260623 --mart-ref daily:trade_date=20260623 --feature-ref market_strength:as_of=20260623,window=20 --validated-output output.json
 uv run ashare runs list
 uv run ashare runs replay runs/<run_id>
 ```
 
-`runs record` 不调用模型，只保存 Codex 已完成或正在整理的分析上下文、输出和质量门。未指定 `--protocol` 时，run 会记录为 `user_directed.v1`，表示分析约束来自用户当次问题和对话中的框架。
+`runs record` 不调用模型，只保存 LLM agent 已完成或正在整理的分析问题、数据引用、输出和质量门。未指定 `--protocol` 时，run 会记录为 `user_directed.v1`，表示分析约束来自用户当次问题和对话中的框架。
 
 指定数据根目录：
 
@@ -247,7 +223,6 @@ uv run ashare --data-dir /path/to/data data list
 - `data/features` 只保存可复现特征和评分，不保存自然语言结论。
 - `data/evidence` 保存外部产业证据，不能覆盖项目内已有行情、财务和公告事实。
 - `data/knowledge` 保存结构化慢变量，不表达当日市场强弱。
-- `data/context_packs` 是可选上下文快照和下钻便利包，不是默认事实源，也不直接生成结论。
 - `protocols` 只保存可复用分析模板；临时框架以用户当次指令为准，可随 run 记录为 ad hoc protocol。
 - `reports/` 和 `runs/` 只保存输出和留痕，不回流为事实源。
 - 外部证据不能覆盖项目内已有行情、财务和公告事实。

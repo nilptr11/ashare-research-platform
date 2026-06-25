@@ -39,10 +39,6 @@ def test_daily_status_reports_degraded_required_data_without_blocking(monkeypatc
         def list(self):
             return []
 
-    context_dir = tmp_path / "context_packs" / "market_structure" / "as_of=20260624"
-    context_dir.mkdir(parents=True)
-    (context_dir / "context.json").write_text(json.dumps({"coverage": {}, "quality_flags": []}), encoding="utf-8")
-
     monkeypatch.setattr(daily, "daily_plan", lambda: [DailyTask("dc_index", "membership", "trade_date", required=True)])
     monkeypatch.setattr(daily.FeatureRegistry, "builtin", lambda: EmptyFeatureRegistry())
 
@@ -74,21 +70,6 @@ def test_daily_status_keeps_optional_history_gaps_out_of_analysis_status(monkeyp
         def list(self):
             return []
 
-    context_dir = tmp_path / "context_packs" / "market_structure" / "as_of=20260326"
-    context_dir.mkdir(parents=True)
-    (context_dir / "context.json").write_text(
-        json.dumps(
-            {
-                "as_of": "20260326",
-                "window": {"trade_days": 60, "feature_windows": [5]},
-                "coverage": {},
-                "quality_flags": [],
-                "inputs": [],
-            }
-        ),
-        encoding="utf-8",
-    )
-
     monkeypatch.setattr(
         daily,
         "daily_plan",
@@ -99,7 +80,7 @@ def test_daily_status_keeps_optional_history_gaps_out_of_analysis_status(monkeyp
     )
     monkeypatch.setattr(daily.FeatureRegistry, "builtin", lambda: EmptyFeatureRegistry())
 
-    payload = build_status(FakeReader(), as_of="20260326", windows=[5], context_trade_days=60)
+    payload = build_status(FakeReader(), as_of="20260326", windows=[5])
 
     assert payload["status"] == "ready"
     assert payload["maintenance_status"] == "warning"
@@ -116,7 +97,7 @@ def test_cli_daily_run_writes_report(monkeypatch, capsys, tmp_path):
         calls.append(args)
         return {"schema": "ashare.data_build_result.v1", "dataset": args.dataset, "rows": 1}
 
-    def fake_build_status(reader, *, as_of, windows, context_trade_days):
+    def fake_build_status(reader, *, as_of, windows):
         return {
             "schema": "ashare.daily_status.v1",
             "as_of": as_of,
@@ -124,7 +105,6 @@ def test_cli_daily_run_writes_report(monkeypatch, capsys, tmp_path):
             "coverage": {},
             "datasets": [],
             "features": [],
-            "context": {},
             "blocking": [],
             "warnings": [],
             "skipped": [],
@@ -142,7 +122,6 @@ def test_cli_daily_run_writes_report(monkeypatch, capsys, tmp_path):
             "--as-of",
             "20260624",
             "--skip-features",
-            "--skip-context",
         ]
     )
 
@@ -168,7 +147,7 @@ def test_cli_daily_run_propagates_degraded_status(monkeypatch, capsys, tmp_path)
     def fake_build_dataset(args, reader):
         return {"schema": "ashare.data_build_result.v1", "dataset": args.dataset, "rows": 1}
 
-    def fake_build_status(reader, *, as_of, windows, context_trade_days):
+    def fake_build_status(reader, *, as_of, windows):
         return {
             "schema": "ashare.daily_status.v1",
             "as_of": as_of,
@@ -176,7 +155,6 @@ def test_cli_daily_run_propagates_degraded_status(monkeypatch, capsys, tmp_path)
             "coverage": {"degraded": 1},
             "datasets": [{"dataset": "dc_index", "status": "degraded"}],
             "features": [],
-            "context": {},
             "blocking": [],
             "degraded": [{"dataset": "dc_index", "status": "degraded"}],
             "warnings": [],
@@ -195,7 +173,6 @@ def test_cli_daily_run_propagates_degraded_status(monkeypatch, capsys, tmp_path)
             "--as-of",
             "20260624",
             "--skip-features",
-            "--skip-context",
         ]
     )
 
@@ -221,7 +198,6 @@ def test_cli_daily_repair_only_runs_unready_datasets(monkeypatch, capsys, tmp_pa
                     {"dataset": "daily", "status": "missing"},
                 ],
                 "features": [],
-                "context": {},
                 "blocking": [{"dataset": "daily", "status": "missing"}],
                 "warnings": [],
                 "skipped": [],
@@ -233,7 +209,6 @@ def test_cli_daily_repair_only_runs_unready_datasets(monkeypatch, capsys, tmp_pa
                 "coverage": {},
                 "datasets": [],
                 "features": [],
-                "context": {},
                 "blocking": [],
                 "warnings": [],
                 "skipped": [],
@@ -257,7 +232,6 @@ def test_cli_daily_repair_only_runs_unready_datasets(monkeypatch, capsys, tmp_pa
             "--as-of",
             "20260624",
             "--skip-features",
-            "--skip-context",
         ]
     )
 

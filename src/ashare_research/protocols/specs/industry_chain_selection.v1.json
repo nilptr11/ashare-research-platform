@@ -5,24 +5,17 @@
   "version": "v1",
   "status": "registered_protocol",
   "description": "用于 Agent 主导的 A 股主线研究、产业链拆解、A 股公司映射和候选池分层。协议只输出研究状态、证据强弱、缺口和跟踪清单，不输出交易指令、仓位建议或自动化执行信号。",
-  "required_contexts": [
-    "market_structure"
+  "required_inputs": [
+    "market_data",
+    "market_features"
   ],
   "optional_inputs": [
-    "industry_context",
-    "stock_context",
+    "industry_data",
+    "stock_data",
     "evidence_records",
     "knowledge_snapshot",
     "company_filings",
     "financial_marts"
-  ],
-  "suggested_capabilities": [
-    "market_environment.v1",
-    "theme_strength_detection.v1",
-    "concept_membership_discovery.v1",
-    "company_exposure_validation.v1",
-    "financial_validation.v1",
-    "evidence_collection.v1"
   ],
   "required_sections": [
     "research_scope",

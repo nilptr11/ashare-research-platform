@@ -1,6 +1,6 @@
 # Project Docs
 
-本目录只放会指导项目使用、维护或 Agent 研究的文档。Codex 默认入口在根目录 `SKILL.md`，运行时事实源以 `data/mart`、`data/features`、`data/evidence`、`data/knowledge` 为准；`data/context_packs` 只是可选快照。
+本目录只放会指导项目使用、维护或 Agent 研究的文档。默认入口在根目录 `SKILL.md`，运行时事实源以 `data/mart`、`data/features`、`data/evidence`、`data/knowledge` 为准。
 
 ## 目录边界
 

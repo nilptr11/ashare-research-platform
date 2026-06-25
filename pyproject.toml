@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ashare-research-platform"
 version = "0.1.0"
-description = "A-share research data platform for reproducible Codex workflows."
+description = "A-share research data foundation for LLM research skills."
 readme = "README.md"
 requires-python = ">=3.14"
 authors = [
-  { name = "Codex" }
+  { name = "ashare-research maintainers" }
 ]
 dependencies = [
   "akshare>=1.18.0",
@@ -31,5 +31,4 @@ where = ["src"]
 include = ["ashare_research*"]
 
 [tool.setuptools.package-data]
-"ashare_research.capabilities" = ["specs/*.json"]
 "ashare_research.protocols" = ["specs/*.json", "output_schemas/*.json"]

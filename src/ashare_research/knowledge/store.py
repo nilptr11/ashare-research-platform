@@ -69,7 +69,7 @@ class KnowledgeStore:
         payload: dict[str, Any] | list[dict[str, Any]],
         *,
         reason: str | None = None,
-        proposed_by: str = "codex",
+        proposed_by: str = "llm_agent",
     ) -> KnowledgeProposeResult:
         records = payload if isinstance(payload, list) else [payload]
         proposal_ids: list[str] = []
@@ -91,7 +91,7 @@ class KnowledgeStore:
         payload: dict[str, Any] | KnowledgeRecord,
         *,
         reason: str | None = None,
-        proposed_by: str = "codex",
+        proposed_by: str = "llm_agent",
         write: bool = True,
     ) -> KnowledgeProposal:
         record = payload if isinstance(payload, KnowledgeRecord) else KnowledgeRecord.from_dict(payload)

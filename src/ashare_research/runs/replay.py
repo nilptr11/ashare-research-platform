@@ -40,12 +40,10 @@ def replay_run(run_dir: Path | str) -> dict[str, Any]:
 
 def _collect_artifacts(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     artifacts: list[dict[str, Any]] = []
-    for key in ("question", "protocol", "evidence", "knowledge"):
+    for key in ("question", "protocol", "data_refs", "evidence", "knowledge"):
         artifact = manifest.get(key)
         if artifact:
             artifacts.append(artifact)
-    artifacts.extend(manifest.get("capabilities") or [])
-    artifacts.extend(manifest.get("context_packs") or [])
     for artifact in manifest.get("outputs", {}).values():
         if isinstance(artifact, dict):
             artifacts.append(artifact)

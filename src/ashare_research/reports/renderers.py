@@ -12,8 +12,7 @@ def render_trace_report(
     question: str,
     as_of: str,
     protocol: ProtocolSpec,
-    capability_artifacts: list[RunArtifact],
-    context_artifacts: list[RunArtifact],
+    data_refs_artifact: RunArtifact,
     evidence_artifact: RunArtifact,
     knowledge_artifact: RunArtifact,
     quality_gates: dict[str, Any],
@@ -36,10 +35,9 @@ def render_trace_report(
         "## Inputs",
         "",
     ]
-    lines.extend(_artifact_lines("capability", capability_artifacts))
-    lines.extend(_artifact_lines("context_pack", context_artifacts))
     lines.extend(
         [
+            f"- data_refs: `{data_refs_artifact.path}` sha256=`{data_refs_artifact.sha256}`",
             f"- evidence: `{evidence_artifact.path}` sha256=`{evidence_artifact.sha256}`",
             f"- knowledge: `{knowledge_artifact.path}` sha256=`{knowledge_artifact.sha256}`",
             f"- as_of: `{as_of}`",
@@ -52,11 +50,5 @@ def render_trace_report(
     for name, gate in quality_gates.get("gates", {}).items():
         message = gate.get("message") or ""
         lines.append(f"- {name}: `{gate.get('status')}` {message}".rstrip())
-    lines.extend(["", "## Traceability", "", "- Market facts: mart/context pack inputs.", "- External industry claims: evidence artifact.", "- Slow variable mappings: knowledge artifact.", "- Model inference: model output artifacts."])
+    lines.extend(["", "## Traceability", "", "- Market facts: mart and feature refs.", "- External industry claims: evidence artifact.", "- Slow variable mappings: knowledge artifact.", "- Model inference: model output artifacts."])
     return "\n".join(lines) + "\n"
-
-
-def _artifact_lines(label: str, artifacts: list[RunArtifact]) -> list[str]:
-    if not artifacts:
-        return [f"- {label}: none"]
-    return [f"- {label}: `{artifact.path}` sha256=`{artifact.sha256}`" for artifact in artifacts]

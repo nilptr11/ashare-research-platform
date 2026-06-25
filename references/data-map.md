@@ -1,13 +1,13 @@
-# Codex 数据地图
+# 数据地图
 
-本文件告诉 Codex：本地数据底座已经准备了什么，适合回答什么，不能回答什么。默认先读本文件，再决定是否需要看 capability、protocol、context 或底层命令。
+本文件告诉 LLM agent：本地数据底座已经准备了什么，适合回答什么，不能回答什么。默认先读本文件，再决定是否需要看 protocol 或底层命令。
 
 ## 使用原则
 
 1. 先确认本地是否已有可用事实，不要直接去外部搜索。
 2. 先看数据层级和适用边界，再读具体分区。
-3. 只在数据缺失、过期或覆盖不足时，才根据 `codex/source-registry.md` 去补证据。
-4. 不为单个问题现场生成专属 workflow；Codex 自己组合数据和证据。
+3. 只在数据缺失、过期或覆盖不足时，才根据 `references/source-registry.md` 去补证据。
+4. 不为单个问题现场生成专属 workflow；LLM agent 自己组合数据和证据。
 5. 输出时说明数据日期、来源、缺口和结论强度。
 
 ## 数据层级
@@ -18,7 +18,6 @@
 | feature | `data/features/` | 市场强弱、行业/概念强弱、龙头验证、高弹性候选等可复现信号 | 只支持筛查、排序和线索发现 |
 | evidence | `data/evidence/` | 产业价格、订单、产能、capex、政策、招投标等外部证据 | 支持 mart 覆盖不了的产业事实 |
 | knowledge | `data/knowledge/` | 公司、产品、客户、产业链节点和关系等慢变量 | 支持语义映射和复用，不代表当日强弱 |
-| context | `data/context_packs/` | 可选快照和下钻便利包 | 不是默认入口，不直接生成结论 |
 | runs | `runs/` | 研究过程和输出留痕 | 不是事实源 |
 
 ## 基础数据族
@@ -64,7 +63,7 @@ Knowledge 解决“慢变量关系复用”，例如：
 - 公司和客户；
 - 上游、中游、下游、设备、材料、应用之间的关系。
 
-Codex 默认只能提出 proposed knowledge。进入 accepted knowledge 前需要人工或维护流程接受。
+LLM agent 默认只能提出 proposed knowledge。进入 accepted knowledge 前需要人工或维护流程接受。
 
 ## 产业链研究时的默认读法
 
@@ -86,4 +85,4 @@ uv run ashare mart meta DATASET --trade-date YYYYMMDD
 uv run ashare feature meta FEATURE --as-of YYYYMMDD --window 20
 ```
 
-详细命令只在需要维护、补数或抽样核验时使用，见 `codex/data-access-guide.md`。
+详细命令只在需要维护、补数或抽样核验时使用，见 `references/data-access-guide.md`。

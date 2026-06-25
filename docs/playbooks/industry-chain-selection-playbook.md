@@ -1,6 +1,6 @@
 # 产业链选股研究 Playbook
 
-本文档是示例研究路径，不是强制工作流。Codex 应优先根据 `SKILL.md` 和 `codex/data-map.md` 选择最小必要数据。
+本文档是示例研究路径，不是强制工作流。LLM agent 应优先根据 `SKILL.md` 和 `references/data-map.md` 选择最小必要数据。
 
 ## 适用目标
 
@@ -76,13 +76,13 @@ daily status 确认数据 ready
 
 ## 协议入口
 
-重复使用该研究产物时，使用注册协议约束输出结构。数据读取由 Codex 按 `codex/data-map.md` 动态选择，capability 只作为辅助索引：
+重复使用该研究产物时，使用注册协议约束输出结构。数据读取由 LLM agent 按 `references/data-map.md` 动态选择：
 
 ```bash
 uv run ashare daily status --as-of 20260623
 uv run ashare protocols show industry_chain_selection.v1
 uv run ashare protocols output-schema industry_chain_selection.v1
-uv run ashare runs record --question "按主线选股与产业链拆解协议分析 AI 算力硬件链" --protocol industry_chain_selection.v1 --as-of 20260623 --capability theme_strength_detection.v1 --capability company_exposure_validation.v1 --validated-output output.json
+uv run ashare runs record --question "按主线选股与产业链拆解协议分析 AI 算力硬件链" --protocol industry_chain_selection.v1 --as-of 20260623 --mart-ref daily:trade_date=20260623 --feature-ref market_strength:as_of=20260623,window=20 --validated-output output.json
 ```
 
 该协议只约束候选池、证据矩阵和后续跟踪计划的输出形状，不规定固定取数顺序。若缺产业链证据或公司业务暴露度证据，结论必须降级，并在 `data_gaps` 中写明影响和建议补数路径。
