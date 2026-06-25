@@ -44,6 +44,7 @@ def _collect_artifacts(manifest: dict[str, Any]) -> list[dict[str, Any]]:
         artifact = manifest.get(key)
         if artifact:
             artifacts.append(artifact)
+    artifacts.extend(manifest.get("capabilities") or [])
     artifacts.extend(manifest.get("context_packs") or [])
     for artifact in manifest.get("outputs", {}).values():
         if isinstance(artifact, dict):

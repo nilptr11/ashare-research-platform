@@ -24,6 +24,7 @@ class ProtocolSpec:
     required_sections: tuple[str, ...] = ()
     forbidden: tuple[str, ...] = ()
     output_schema: str | None = None
+    suggested_capabilities: tuple[str, ...] = ()
     gap_policy: dict[str, str] = field(default_factory=dict)
     quality_gates: tuple[str, ...] = ()
     description: str = ""
@@ -42,6 +43,7 @@ class ProtocolSpec:
             required_sections=tuple(str(item) for item in normalized.get("required_sections", ())),
             forbidden=tuple(str(item) for item in normalized.get("forbidden", ())),
             output_schema=normalized.get("output_schema"),
+            suggested_capabilities=tuple(str(item) for item in normalized.get("suggested_capabilities", ())),
             gap_policy={str(key): str(value) for key, value in normalized.get("gap_policy", {}).items()},
             quality_gates=tuple(str(item) for item in normalized.get("quality_gates", ())),
             description=str(normalized.get("description", "")),
@@ -60,6 +62,7 @@ class ProtocolSpec:
             "required_sections": list(self.required_sections),
             "forbidden": list(self.forbidden),
             "output_schema": self.output_schema,
+            "suggested_capabilities": list(self.suggested_capabilities),
             "gap_policy": dict(self.gap_policy),
             "quality_gates": list(self.quality_gates),
         }

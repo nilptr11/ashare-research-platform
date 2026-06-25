@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from ..capabilities import CapabilityRegistry
 from ..evidence import EvidenceStore
 from ..knowledge import KnowledgeStore
 from ..paths import default_data_dir, default_runs_dir
@@ -35,6 +36,7 @@ class RunRecorder:
         as_of: str,
         protocol_id: str | None = None,
         ad_hoc_protocol: dict[str, Any] | None = None,
+        capability_ids: list[str] | None = None,
         context_pack_paths: list[Path | str] | None = None,
         evidence_path: Path | str | None = None,
         knowledge_path: Path | str | None = None,
@@ -52,6 +54,7 @@ class RunRecorder:
 
         question_artifact = self._write_text(run_dir / "question.md", question, kind="question")
         protocol_artifact = self._write_json(run_dir / "protocol.json", protocol.to_dict(), kind="protocol")
+        capability_artifacts = self._write_capabilities(run_dir, capability_ids or [])
         context_artifacts, context_payloads = self._copy_context_packs(run_dir, context_pack_paths or [])
         evidence_artifact = self._copy_or_create_evidence(run_dir, evidence_path)
         knowledge_artifact = self._copy_or_create_knowledge(run_dir, knowledge_path)
@@ -72,6 +75,7 @@ class RunRecorder:
             question=question,
             as_of=as_of,
             protocol=protocol,
+            capability_artifacts=capability_artifacts,
             context_artifacts=context_artifacts,
             evidence_artifact=evidence_artifact,
             knowledge_artifact=knowledge_artifact,
@@ -87,6 +91,7 @@ class RunRecorder:
             protocol_version=protocol.version,
             question=question_artifact,
             protocol=protocol_artifact,
+            capabilities=tuple(capability_artifacts),
             context_packs=tuple(context_artifacts),
             evidence=evidence_artifact,
             knowledge=knowledge_artifact,
@@ -118,6 +123,7 @@ class RunRecorder:
                     "run_id": payload.get("run_id", run_dir.name),
                     "as_of": payload.get("as_of"),
                     "protocol_id": payload.get("protocol_id"),
+                    "capabilities": len(payload.get("capabilities") or []),
                     "quality_status": payload.get("quality_gates", {}).get("status"),
                     "path": str(run_dir),
                 }
@@ -130,6 +136,15 @@ class RunRecorder:
         if not protocol_id:
             return _user_directed_protocol(question)
         return ProtocolRegistry.builtin().require(protocol_id)
+
+    def _write_capabilities(self, run_dir: Path, capability_ids: list[str]) -> list[RunArtifact]:
+        artifacts: list[RunArtifact] = []
+        registry = CapabilityRegistry.builtin()
+        for index, capability_id in enumerate(capability_ids, start=1):
+            spec = registry.require(capability_id)
+            target = run_dir / ("capability.json" if len(capability_ids) == 1 else f"capability_{index}.json")
+            artifacts.append(self._write_json(target, spec.to_dict(), kind="capability"))
+        return artifacts
 
     def _copy_context_packs(self, run_dir: Path, paths: list[Path | str]) -> tuple[list[RunArtifact], list[dict[str, Any]]]:
         artifacts: list[RunArtifact] = []

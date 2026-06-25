@@ -12,6 +12,7 @@ def render_trace_report(
     question: str,
     as_of: str,
     protocol: ProtocolSpec,
+    capability_artifacts: list[RunArtifact],
     context_artifacts: list[RunArtifact],
     evidence_artifact: RunArtifact,
     knowledge_artifact: RunArtifact,
@@ -35,6 +36,7 @@ def render_trace_report(
         "## Inputs",
         "",
     ]
+    lines.extend(_artifact_lines("capability", capability_artifacts))
     lines.extend(_artifact_lines("context_pack", context_artifacts))
     lines.extend(
         [

@@ -1,8 +1,8 @@
-# Agent 选股与产业链拆解定位
+# 产业链选股研究 Playbook
 
-本文档定义本项目在“交易模式”语境下的实际边界：项目只做 Agent 主导的研究、拆解、筛查和留痕，不做自动化交易。
+本文档是示例研究路径，不是强制工作流。Codex 应优先根据 `SKILL.md` 和 `codex/data-map.md` 选择最小必要数据。
 
-## 项目目标
+## 适用目标
 
 本项目的目标是让 Agent 基于可审计数据完成四类工作：
 
@@ -31,11 +31,11 @@
 - 不用外部搜索覆盖项目内已有行情、公告、财务和资金事实。
 - 不把概念成分、热榜、人气榜、涨停池直接等同于公司业务暴露度。
 
-## 推荐工作流
+## 示例路径
 
 ```text
 daily status 确认数据 ready
-  -> industry-chain context 确认主题上下文和缺口
+  -> 按 data map 选择市场、主题、公司暴露度、evidence 或 knowledge 数据
   -> 行业/概念 feature 发现主线
   -> 产业链拆解
   -> A 股公司映射
@@ -76,16 +76,16 @@ daily status 确认数据 ready
 
 ## 协议入口
 
-重复使用该工作流时，使用注册协议：
+重复使用该研究产物时，使用注册协议约束输出结构。数据读取由 Codex 按 `codex/data-map.md` 动态选择，capability 只作为辅助索引：
 
 ```bash
-uv run ashare context build industry-chain ai_infrastructure --as-of 20260623 --windows 5,20,60
+uv run ashare daily status --as-of 20260623
 uv run ashare protocols show industry_chain_selection.v1
 uv run ashare protocols output-schema industry_chain_selection.v1
-uv run ashare runs record --question "按主线选股与产业链拆解协议分析 AI 算力硬件链" --protocol industry_chain_selection.v1 --as-of 20260623 --context-pack data/context_packs/industry_chain/as_of=20260623/key=ai_infrastructure/context.json --validated-output output.json
+uv run ashare runs record --question "按主线选股与产业链拆解协议分析 AI 算力硬件链" --protocol industry_chain_selection.v1 --as-of 20260623 --capability theme_strength_detection.v1 --capability company_exposure_validation.v1 --validated-output output.json
 ```
 
-该协议输出候选池、证据矩阵和后续跟踪计划。若缺产业链证据或公司业务暴露度证据，结论必须降级，并在 `data_gaps` 中写明影响和建议补数路径。
+该协议只约束候选池、证据矩阵和后续跟踪计划的输出形状，不规定固定取数顺序。若缺产业链证据或公司业务暴露度证据，结论必须降级，并在 `data_gaps` 中写明影响和建议补数路径。
 研究产物通过 `runs record` 留痕，不回流为 mart、feature、evidence 或 knowledge 事实源。
 
 Agent 生成分析时优先使用 prompt：

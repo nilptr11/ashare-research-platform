@@ -1,8 +1,9 @@
 """A 股研究数据平台。"""
 
 from .datasets.catalog import DatasetCatalog, default_dataset_specs
+from .capabilities import CapabilityRegistry
 from .connectors import AkshareConnector, ConnectorRegistry, TushareConnector
-from .context_packs import ContextPackBuilder
+from .context_packs import ContextComposer, ContextPackBuilder
 from .evidence import EvidenceRecord, EvidenceStore
 from .features import FeatureBuilder, FeatureRegistry, FeatureStore, default_feature_specs
 from .knowledge import KnowledgeStore
@@ -15,7 +16,9 @@ from .schemas import DatasetCheck, DatasetSpec, FeatureSpec, MartPartition, Mart
 
 __all__ = [
     "AkshareConnector",
+    "CapabilityRegistry",
     "ConnectorRegistry",
+    "ContextComposer",
     "ContextPackBuilder",
     "DatasetCatalog",
     "DatasetCheck",

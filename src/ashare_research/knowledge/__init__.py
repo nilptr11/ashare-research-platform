@@ -10,6 +10,7 @@ from .schemas import (
     KnowledgeSource,
 )
 from .store import KnowledgeAcceptResult, KnowledgeProposeResult, KnowledgeStore
+from .taxonomy import taxonomy_payload
 
 __all__ = [
     "KnowledgeAcceptResult",
@@ -26,4 +27,5 @@ __all__ = [
     "incoming",
     "outgoing",
     "proposal_rows",
+    "taxonomy_payload",
 ]

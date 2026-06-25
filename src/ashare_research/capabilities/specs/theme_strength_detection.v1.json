@@ -1,0 +1,46 @@
+{
+  "schema": "ashare.capability_spec.v1",
+  "capability_id": "theme_strength_detection.v1",
+  "name": "主线强度识别",
+  "version": "v1",
+  "category": "theme",
+  "description": "识别正在被市场定价的行业、概念和题材扩散线索。",
+  "questions": [
+    "哪些行业或概念正在被市场定价？",
+    "主线是否扩散？",
+    "某个主题是否仍有市场关注？"
+  ],
+  "inputs": {
+    "context": ["market_structure", "industry"],
+    "features": ["industry_strength", "concept_strength", "limit_sentiment"],
+    "marts": ["sw_daily", "ci_daily", "dc_index", "ths_index"]
+  },
+  "commands": [
+    "uv run ashare feature read industry_strength --as-of YYYYMMDD --window 20 --limit 50 --format json",
+    "uv run ashare feature read concept_strength --as-of YYYYMMDD --window 20 --limit 50 --format json",
+    "uv run ashare mart read dc_index --trade-date YYYYMMDD --format json"
+  ],
+  "can_support": [
+    "行业和概念强弱排序",
+    "市场关注度初筛",
+    "题材扩散线索",
+    "主线研究方向选择"
+  ],
+  "cannot_support": [
+    "公司业务正宗程度",
+    "订单兑现",
+    "基本面证伪",
+    "交易买卖建议"
+  ],
+  "freshness": {
+    "frequency": "daily",
+    "realtime": false,
+    "date_field": "trade_date"
+  },
+  "quality_requirements": [
+    "必须核对 feature meta 的 inputs 和窗口",
+    "概念和行业强度只能作为主线线索",
+    "不能用主题强度替代公司披露"
+  ],
+  "suggested_protocols": ["industry_chain_selection.v1", "market_structure.v1"]
+}

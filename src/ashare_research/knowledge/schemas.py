@@ -8,6 +8,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from ..schemas import AShareResearchError
+from .taxonomy import is_known_entity_type, is_known_predicate, relation_errors
 
 
 class KnowledgeError(AShareResearchError):
@@ -224,10 +225,15 @@ def validate_knowledge_record(record: KnowledgeRecord) -> KnowledgeRecord:
         raise KnowledgeError("KnowledgeRecord.id is required")
     if not record.predicate:
         raise KnowledgeError(f"{record.id}: predicate is required")
+    if not is_known_predicate(record.predicate):
+        raise KnowledgeError(f"{record.id}: unknown predicate {record.predicate!r}")
     if record.confidence not in CONFIDENCE_VALUES:
         raise KnowledgeError(f"{record.id}: invalid confidence {record.confidence!r}")
     _validate_entity(record.id, "subject", record.subject)
     _validate_entity(record.id, "object", record.object_ref)
+    relation_violations = relation_errors(record.predicate, record.subject.type, record.object_ref.type)
+    if relation_violations:
+        raise KnowledgeError(f"{record.id}: {'; '.join(relation_violations)}")
     _validate_source(record)
     if not record.valid_from:
         raise KnowledgeError(f"{record.id}: valid_from is required")
@@ -264,6 +270,8 @@ def records_digest(records: list[KnowledgeRecord]) -> str:
 def _validate_entity(record_id: str, role: str, entity: KnowledgeEntityRef) -> None:
     if not entity.type or not entity.id or not entity.name:
         raise KnowledgeError(f"{record_id}: {role} requires type/id/name")
+    if not is_known_entity_type(entity.type):
+        raise KnowledgeError(f"{record_id}: {role} has unknown entity type {entity.type!r}")
 
 
 def _validate_source(record: KnowledgeRecord) -> None:

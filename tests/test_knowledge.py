@@ -67,6 +67,34 @@ def test_knowledge_requires_traceable_source(tmp_path):
         store.propose_records(payload)
 
 
+def test_knowledge_rejects_unknown_entity_type(tmp_path):
+    store = KnowledgeStore(tmp_path)
+    payload = _knowledge_record(subject={"type": "issuer", "id": "603938.SH", "name": "三孚股份"})
+
+    with pytest.raises(KnowledgeError, match="unknown entity type"):
+        store.propose_records(payload)
+
+
+def test_knowledge_rejects_unknown_predicate(tmp_path):
+    store = KnowledgeStore(tmp_path)
+    payload = _knowledge_record(predicate="mentions")
+
+    with pytest.raises(KnowledgeError, match="unknown predicate"):
+        store.propose_records(payload)
+
+
+def test_knowledge_rejects_invalid_relation_direction(tmp_path):
+    store = KnowledgeStore(tmp_path)
+    payload = _knowledge_record(
+        subject={"type": "product", "id": "high_purity_silicon_tetrachloride", "name": "高纯四氯化硅"},
+        predicate="has_product_exposure",
+        object={"type": "company", "id": "603938.SH", "name": "三孚股份"},
+    )
+
+    with pytest.raises(KnowledgeError, match="not allowed for predicate"):
+        store.propose_records(payload)
+
+
 def test_knowledge_accept_is_idempotent(tmp_path):
     store = KnowledgeStore(tmp_path)
     proposal = store.propose(_knowledge_record())
@@ -137,6 +165,16 @@ def test_cli_knowledge_flow(capsys, tmp_path):
     snapshot_payload = json.loads(capsys.readouterr().out)
     assert snapshot_payload["path"] == str(snapshot_path)
     assert snapshot_path.exists()
+
+
+def test_cli_knowledge_taxonomy(capsys, tmp_path):
+    exit_code = main(["--data-dir", str(tmp_path), "knowledge", "taxonomy"])
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema"] == "ashare.knowledge_taxonomy.v1"
+    assert "company" in payload["entity_types"]
+    assert any(item["predicate"] == "has_product_exposure" for item in payload["predicates"])
 
 
 def test_knowledge_record_round_trip():

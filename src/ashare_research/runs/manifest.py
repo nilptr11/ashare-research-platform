@@ -27,6 +27,7 @@ class RunManifest:
     protocol_version: str
     question: RunArtifact
     protocol: RunArtifact
+    capabilities: tuple[RunArtifact, ...] = ()
     context_packs: tuple[RunArtifact, ...] = ()
     evidence: RunArtifact | None = None
     knowledge: RunArtifact | None = None
@@ -45,6 +46,7 @@ class RunManifest:
             "protocol_version": self.protocol_version,
             "question": self.question.to_dict(),
             "protocol": self.protocol.to_dict(),
+            "capabilities": [artifact.to_dict() for artifact in self.capabilities],
             "context_packs": [artifact.to_dict() for artifact in self.context_packs],
             "evidence": self.evidence.to_dict() if self.evidence else None,
             "knowledge": self.knowledge.to_dict() if self.knowledge else None,

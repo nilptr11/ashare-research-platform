@@ -1,0 +1,45 @@
+{
+  "schema": "ashare.capability_spec.v1",
+  "capability_id": "market_environment.v1",
+  "name": "市场环境判断",
+  "version": "v1",
+  "category": "market",
+  "description": "判断最近完整交易日的市场顺逆风、指数强弱、成交趋势和短线情绪。",
+  "questions": [
+    "当前市场是顺风、逆风还是震荡？",
+    "风格和主要指数是否支持进一步寻找主线？"
+  ],
+  "inputs": {
+    "context": ["market_structure"],
+    "features": ["market_strength", "limit_sentiment"],
+    "marts": ["trade_cal", "index_daily", "index_dailybasic", "daily", "daily_basic"]
+  },
+  "commands": [
+    "uv run ashare daily status --as-of YYYYMMDD --format json",
+    "uv run ashare context build market-structure --as-of YYYYMMDD --trade-days 120",
+    "uv run ashare feature read market_strength --as-of YYYYMMDD --window 20 --format json",
+    "uv run ashare feature read limit_sentiment --as-of YYYYMMDD --window 20 --format json"
+  ],
+  "can_support": [
+    "指数强弱判断",
+    "成交趋势判断",
+    "短线情绪状态判断",
+    "是否适合继续寻找主线"
+  ],
+  "cannot_support": [
+    "具体公司基本面判断",
+    "公司业务暴露度验证",
+    "自动交易动作"
+  ],
+  "freshness": {
+    "frequency": "daily",
+    "realtime": false,
+    "date_field": "trade_date"
+  },
+  "quality_requirements": [
+    "daily status 不能存在 blocking",
+    "feature meta 的 quality_status 应为 ok 或明确降级",
+    "必须说明 as_of 代表最近完整交易日"
+  ],
+  "suggested_protocols": ["market_structure.v1"]
+}

@@ -1,6 +1,6 @@
 # Project Docs
 
-本目录只放会指导项目使用、维护或 Agent 研究流程的文档。运行时事实源仍以 `data/mart`、`data/features`、`data/evidence`、`data/knowledge`、`data/context_packs` 为准。
+本目录只放会指导项目使用、维护或 Agent 研究的文档。Codex 默认入口在根目录 `SKILL.md`，运行时事实源以 `data/mart`、`data/features`、`data/evidence`、`data/knowledge` 为准；`data/context_packs` 只是可选快照。
 
 ## 目录边界
 
@@ -8,8 +8,9 @@
 | --- | --- |
 | `architecture/` | 系统能力、数据读取顺序、产物边界和质量门说明 |
 | `operations/` | 基础数据维护、验收、补数和读取口径 |
-| `agent-workflows/` | Agent 研究工作流、输出状态和非交易边界 |
+| `playbooks/` | 示例研究路径，仅供参考，不是强制工作流 |
 | `vendor/` | 外部供应商或接口资料，例如 Tushare 接口清单 |
+| `refactor/` | 目标架构、重构路线和迁移策略 |
 
 ## 不放在这里的内容
 

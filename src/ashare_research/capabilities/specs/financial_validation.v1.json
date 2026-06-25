@@ -1,0 +1,45 @@
+{
+  "schema": "ashare.capability_spec.v1",
+  "capability_id": "financial_validation.v1",
+  "name": "财务兑现验证",
+  "version": "v1",
+  "category": "company",
+  "description": "用财务报表、主营构成和业绩预告检查产业线索是否进入收入、利润或现金流。",
+  "questions": [
+    "主题相关业务是否已经反映在收入或利润中？",
+    "财务质量是否支持继续研究？",
+    "是否存在业绩预告、审计或现金流风险？"
+  ],
+  "inputs": {
+    "marts": ["income", "balancesheet", "cashflow", "fina_indicator", "fina_mainbz", "express", "dividend", "fina_audit", "earnings_forecast"],
+    "evidence": ["records"],
+    "knowledge": ["current"]
+  },
+  "commands": [
+    "uv run ashare mart read income --period PERIOD --format json",
+    "uv run ashare mart read fina_indicator --period PERIOD --format json",
+    "uv run ashare mart read fina_mainbz --period PERIOD --format json",
+    "uv run ashare mart read earnings_forecast --partition ann_date=YYYYMMDD --format json"
+  ],
+  "can_support": [
+    "收入、利润、现金流和主营构成验证",
+    "财务风险标记",
+    "产业线索是否已有财务兑现的初步判断"
+  ],
+  "cannot_support": [
+    "缺财务分区时给出确定兑现结论",
+    "替代公司公告或年报细读",
+    "预测未来业绩"
+  ],
+  "freshness": {
+    "frequency": "quarterly_or_event",
+    "realtime": false,
+    "date_field": "period_or_ann_date"
+  },
+  "quality_requirements": [
+    "必须说明财报 period",
+    "财务重表或缺分区时必须降级",
+    "主营构成和产业链关系需要 evidence 或 knowledge 辅助解释"
+  ],
+  "suggested_protocols": ["industry_chain_selection.v1"]
+}

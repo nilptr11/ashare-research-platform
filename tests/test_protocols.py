@@ -20,6 +20,7 @@ def test_builtin_protocol_registry_loads_industry_chain_selection():
     assert spec.title == "主线选股与产业链拆解"
     assert "market_structure" in spec.required_contexts
     assert "candidate_pool" in spec.required_sections
+    assert "company_exposure_validation.v1" in spec.suggested_capabilities
     assert any("position sizing" in item for item in spec.forbidden)
 
 
@@ -29,6 +30,7 @@ def test_protocol_registry_validate():
     assert payload["status"] == "ready"
     assert payload["protocols"][0]["protocol_id"] == "market_structure.v1"
     assert payload["protocols"][0]["output_schema_status"] == "ready"
+    assert "market_environment.v1" in payload["protocols"][0]["suggested_capabilities"]
 
 
 def test_protocol_registry_validate_all_protocols():
@@ -68,6 +70,7 @@ def test_cli_protocols_list_show_validate(capsys):
     assert exit_code == 0
     show_payload = json.loads(capsys.readouterr().out)
     assert show_payload["output_schema"] == "ashare.protocol_output.market_structure.v1"
+    assert "market_environment.v1" in show_payload["suggested_capabilities"]
 
     exit_code = main(["protocols", "validate", "market_structure.v1"])
     assert exit_code == 0

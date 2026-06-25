@@ -1,0 +1,89 @@
+# Codex 数据地图
+
+本文件告诉 Codex：本地数据底座已经准备了什么，适合回答什么，不能回答什么。默认先读本文件，再决定是否需要看 capability、protocol、context 或底层命令。
+
+## 使用原则
+
+1. 先确认本地是否已有可用事实，不要直接去外部搜索。
+2. 先看数据层级和适用边界，再读具体分区。
+3. 只在数据缺失、过期或覆盖不足时，才根据 `codex/source-registry.md` 去补证据。
+4. 不为单个问题现场生成专属 workflow；Codex 自己组合数据和证据。
+5. 输出时说明数据日期、来源、缺口和结论强度。
+
+## 数据层级
+
+| 层级 | 路径 | 作用 | 结论边界 |
+| --- | --- | --- | --- |
+| mart | `data/mart/` | 行情、指数、行业、公告、财务、资金等结构化事实 | 可以支持事实查询和交叉验证 |
+| feature | `data/features/` | 市场强弱、行业/概念强弱、龙头验证、高弹性候选等可复现信号 | 只支持筛查、排序和线索发现 |
+| evidence | `data/evidence/` | 产业价格、订单、产能、capex、政策、招投标等外部证据 | 支持 mart 覆盖不了的产业事实 |
+| knowledge | `data/knowledge/` | 公司、产品、客户、产业链节点和关系等慢变量 | 支持语义映射和复用，不代表当日强弱 |
+| context | `data/context_packs/` | 可选快照和下钻便利包 | 不是默认入口，不直接生成结论 |
+| runs | `runs/` | 研究过程和输出留痕 | 不是事实源 |
+
+## 基础数据族
+
+| 数据族 | 代表数据 | 主要用途 | 不足以支持 |
+| --- | --- | --- | --- |
+| 交易日与股票身份 | `trade_cal`, `stock_basic` | 确认交易日、股票池、上市状态、基础身份 | 行业主线、公司业务暴露 |
+| A 股行情与估值 | `daily`, `daily_basic` | 个股价格、成交、换手、市值、估值 | 公司订单、客户、产品真实性 |
+| 指数与行业 | `index_daily`, `index_dailybasic`, `sw_daily`, `ci_daily` | 市场环境、风格、行业强弱 | 产业链具体环节和公司正宗程度 |
+| 概念与成分 | `dc_index`, `ths_index`, `dc_member`, `ths_member`, `index_member_all` | 题材发现、候选池初筛、市场关注线索 | 公司业务暴露度确认 |
+| 短线情绪 | `limit_list_d`, `limit_list_ths`, `top_list` | 涨跌停、龙虎榜、短线认可度和扩散线索 | 中长期基本面兑现 |
+| 资金与流动性 | `moneyflow_dc`, `moneyflow`, `stk_factor` | 市场资金验证、强弱交叉检查 | 独立公司价值判断 |
+| 公告与财务 | `a_stock_notice`, `fina_mainbz`, `income`, `balancesheet`, `cashflow`, `fina_indicator` | 公司暴露度、收入构成、风险事件、财务验证 | 未披露订单或产业外部价格 |
+
+具体注册数据集以 `uv run ashare data list --format json` 为准。
+
+## Feature 数据族
+
+| Feature | 主要用途 | 使用边界 |
+| --- | --- | --- |
+| `market_strength` | 判断市场环境、指数强弱、成交状态 | 不能推出具体公司结论 |
+| `industry_strength` | 比较行业强弱和趋势 | 不能替代产业链拆解 |
+| `concept_strength` | 发现正在被定价的主题和概念 | 不能证明公司业务正宗 |
+| `limit_sentiment` | 检查情绪、涨跌停结构和扩散 | 不能替代基本面证据 |
+| `leader_validation` | 找市场认可的龙头线索 | 不能直接判断长期龙头 |
+| `elasticity_candidates` | 找高弹性候选 | 不能直接输出交易动作 |
+
+使用 feature 前必须查看 meta 的输入、窗口、质量状态和分区日期。
+
+## Evidence 和 Knowledge
+
+Evidence 解决“本地行情和财务没有覆盖的产业事实”，例如：
+
+- 产业价格、库存、供需；
+- 订单、客户、产能、扩产；
+- capex、招投标、政策、行业协会数据；
+- 公司公告之外的官方或可核验证据。
+
+Knowledge 解决“慢变量关系复用”，例如：
+
+- 公司和产品；
+- 产品和产业链节点；
+- 公司和客户；
+- 上游、中游、下游、设备、材料、应用之间的关系。
+
+Codex 默认只能提出 proposed knowledge。进入 accepted knowledge 前需要人工或维护流程接受。
+
+## 产业链研究时的默认读法
+
+1. 用行业、概念和市场 feature 找“是否被市场定价”的线索。
+2. 用概念成分、指数成分、公告和主营构成建立候选池。
+3. 用 evidence / knowledge / 公告 / 财务验证公司是否真的处在产业链关键环节。
+4. 用短线情绪、资金、龙虎榜、涨停池检查市场认可度。
+5. 把候选分为 `core_research`、`elastic_watch`、`laggard_watch`、`evidence_needed`、`excluded`。
+
+这个读法是研究纪律，不是固定 workflow。缺任一类关键证据时，应降低结论强度。
+
+## 最小检查命令
+
+```bash
+uv run ashare daily status --as-of YYYYMMDD --format json
+uv run ashare data list --format json
+uv run ashare data check --as-of YYYYMMDD --format json
+uv run ashare mart meta DATASET --trade-date YYYYMMDD
+uv run ashare feature meta FEATURE --as-of YYYYMMDD --window 20
+```
+
+详细命令只在需要维护、补数或抽样核验时使用，见 `codex/data-access-guide.md`。

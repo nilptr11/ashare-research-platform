@@ -31,4 +31,5 @@ where = ["src"]
 include = ["ashare_research*"]
 
 [tool.setuptools.package-data]
+"ashare_research.capabilities" = ["specs/*.json"]
 "ashare_research.protocols" = ["specs/*.json", "output_schemas/*.json"]

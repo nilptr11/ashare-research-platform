@@ -9,8 +9,9 @@ from typing import Any
 
 import pandas as pd
 
+from .capabilities import CapabilityRegistry
 from .connectors import ConnectorRegistry, TushareConnector
-from .context_packs import ContextPackBuilder
+from .context_packs import ContextComposer, ContextPackBuilder
 from .daily import (
     DEFAULT_CONTEXT_TRADE_DAYS,
     build_status,
@@ -26,7 +27,7 @@ from .datasets.catalog import DatasetCatalog
 from .evidence import EvidenceStore
 from .evidence.adapters import EvidenceAdapterRegistry, EvidenceAdapterRunner, EvidenceAdapterSpec
 from .features import FeatureBuilder, FeatureRegistry, FeatureStore, ScoringProfile
-from .knowledge import KnowledgeStore, proposal_rows
+from .knowledge import KnowledgeStore, proposal_rows, taxonomy_payload
 from .marts.publisher import MartPublisher
 from .marts.reader import MartReader
 from .output import emit
@@ -233,6 +234,9 @@ def build_parser() -> argparse.ArgumentParser:
     knowledge_snapshot.add_argument("--output")
     knowledge_snapshot.add_argument("--format", choices=("table", "json"), default="json")
 
+    knowledge_taxonomy = knowledge_subparsers.add_parser("taxonomy", help="显示 knowledge 实体类型和关系白名单")
+    knowledge_taxonomy.add_argument("--format", choices=("json", "table"), default="json")
+
     context_parser = subparsers.add_parser("context", help="生成 Codex 可读 context pack")
     context_subparsers = context_parser.add_subparsers(dest="context_command", required=True)
 
@@ -251,19 +255,36 @@ def build_parser() -> argparse.ArgumentParser:
     context_industry.add_argument("--output")
     context_industry.add_argument("--format", choices=("table", "json"), default="json")
 
-    context_industry_chain = context_build_subparsers.add_parser("industry-chain", help="生成主线选股与产业链拆解 context pack")
-    context_industry_chain.add_argument("theme")
-    context_industry_chain.add_argument("--as-of", required=True)
-    context_industry_chain.add_argument("--windows", default="5,20,60", help="逗号分隔 feature 窗口，如 5,20,60")
-    context_industry_chain.add_argument("--preview-limit", type=int, default=20, help="每个 feature/window 的 preview 行数")
-    context_industry_chain.add_argument("--output")
-    context_industry_chain.add_argument("--format", choices=("table", "json"), default="json")
-
     context_stock = context_build_subparsers.add_parser("stock", help="生成个股 context pack")
     context_stock.add_argument("ts_code")
     context_stock.add_argument("--as-of", required=True)
     context_stock.add_argument("--output")
     context_stock.add_argument("--format", choices=("table", "json"), default="json")
+
+    context_compose = context_subparsers.add_parser("compose", help="按 capability 动态组装 Codex context")
+    context_compose.add_argument("--capability", action="append", required=True, help="研究能力 ID，可重复")
+    context_compose.add_argument("--as-of", required=True)
+    context_compose.add_argument("--industry", action="append", default=[], help="行业/主题 anchor，可重复")
+    context_compose.add_argument("--stock", action="append", default=[], help="股票代码 anchor，可重复")
+    context_compose.add_argument("--trade-days", type=int, default=120)
+    context_compose.add_argument("--windows", default="5,20,60", help="逗号分隔 feature 窗口，如 5,20,60")
+    context_compose.add_argument("--question")
+    context_compose.add_argument("--output")
+    context_compose.add_argument("--format", choices=("table", "json"), default="json")
+
+    capabilities_parser = subparsers.add_parser("capabilities", help="Codex 研究能力发现")
+    capabilities_subparsers = capabilities_parser.add_subparsers(dest="capabilities_command", required=True)
+
+    capabilities_list = capabilities_subparsers.add_parser("list", help="列出可用研究能力")
+    capabilities_list.add_argument("--format", choices=("table", "json", "csv"), default="table")
+
+    capabilities_show = capabilities_subparsers.add_parser("show", help="显示一个研究能力卡片")
+    capabilities_show.add_argument("capability_id")
+    capabilities_show.add_argument("--format", choices=("table", "json"), default="json")
+
+    capabilities_validate = capabilities_subparsers.add_parser("validate", help="校验内置研究能力卡片")
+    capabilities_validate.add_argument("capability_id", nargs="?")
+    capabilities_validate.add_argument("--format", choices=("table", "json"), default="json")
 
     protocols_parser = subparsers.add_parser("protocols", help="可复用分析模板和输出质量门")
     protocols_subparsers = protocols_parser.add_subparsers(dest="protocols_command", required=True)
@@ -292,6 +313,7 @@ def build_parser() -> argparse.ArgumentParser:
     runs_record.add_argument("--as-of", required=True)
     runs_record.add_argument("--protocol", help="可选注册 protocol；不传则按用户当次指令记录为 user_directed.v1")
     runs_record.add_argument("--ad-hoc-protocol")
+    runs_record.add_argument("--capability", action="append", default=[], help="本次分析使用的 capability ID，可重复")
     runs_record.add_argument("--context-pack", action="append", default=[])
     runs_record.add_argument("--evidence")
     runs_record.add_argument("--knowledge")
@@ -336,6 +358,8 @@ def main(argv: list[str] | None = None) -> int:
             return _handle_knowledge(args, reader)
         if args.command == "context":
             return _handle_context(args, reader)
+        if args.command == "capabilities":
+            return _handle_capabilities(args)
         if args.command == "protocols":
             return _handle_protocols(args)
         if args.command == "runs":
@@ -1371,6 +1395,9 @@ def _handle_knowledge(args: argparse.Namespace, reader: MartReader) -> int:
     if args.knowledge_command == "snapshot":
         emit(store.snapshot(output_path=args.output), fmt=args.format)
         return 0
+    if args.knowledge_command == "taxonomy":
+        emit(taxonomy_payload(), fmt=args.format)
+        return 0
     raise AShareResearchError(f"unknown knowledge command: {args.knowledge_command}")
 
 
@@ -1393,16 +1420,6 @@ def _handle_context(args: argparse.Namespace, reader: MartReader) -> int:
             )
             emit(payload, fmt=args.format)
             return 0
-        if args.context_pack_type == "industry-chain":
-            payload = builder.build_industry_chain(
-                theme=args.theme,
-                as_of=args.as_of,
-                windows=parse_daily_windows(args.windows),
-                preview_limit=args.preview_limit,
-                output_path=args.output,
-            )
-            emit(payload, fmt=args.format)
-            return 0
         if args.context_pack_type == "stock":
             payload = builder.build_stock(
                 ts_code=args.ts_code,
@@ -1411,7 +1428,34 @@ def _handle_context(args: argparse.Namespace, reader: MartReader) -> int:
             )
             emit(payload, fmt=args.format)
             return 0
+    if args.context_command == "compose":
+        payload = ContextComposer(reader.data_dir, reader=reader).compose(
+            capability_ids=args.capability,
+            as_of=args.as_of,
+            industries=args.industry,
+            stocks=args.stock,
+            trade_days=args.trade_days,
+            windows=parse_daily_windows(args.windows),
+            question=args.question,
+            output_path=args.output,
+        )
+        emit(payload, fmt=args.format)
+        return 0
     raise AShareResearchError(f"unknown context command: {args.context_command}")
+
+
+def _handle_capabilities(args: argparse.Namespace) -> int:
+    registry = CapabilityRegistry.builtin()
+    if args.capabilities_command == "list":
+        emit([spec.summary() for spec in registry.list()], fmt=args.format)
+        return 0
+    if args.capabilities_command == "show":
+        emit(registry.require(args.capability_id).to_dict(), fmt=args.format)
+        return 0
+    if args.capabilities_command == "validate":
+        emit(registry.validate(args.capability_id), fmt=args.format)
+        return 0
+    raise AShareResearchError(f"unknown capabilities command: {args.capabilities_command}")
 
 
 def _handle_protocols(args: argparse.Namespace) -> int:
@@ -1446,6 +1490,7 @@ def _handle_runs(args: argparse.Namespace, reader: MartReader) -> int:
             as_of=args.as_of,
             protocol_id=args.protocol,
             ad_hoc_protocol=ad_hoc_protocol,
+            capability_ids=args.capability,
             context_pack_paths=[Path(path) for path in args.context_pack],
             evidence_path=Path(args.evidence) if args.evidence else None,
             knowledge_path=Path(args.knowledge) if args.knowledge else None,

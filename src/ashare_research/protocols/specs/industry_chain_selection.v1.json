@@ -16,6 +16,14 @@
     "company_filings",
     "financial_marts"
   ],
+  "suggested_capabilities": [
+    "market_environment.v1",
+    "theme_strength_detection.v1",
+    "concept_membership_discovery.v1",
+    "company_exposure_validation.v1",
+    "financial_validation.v1",
+    "evidence_collection.v1"
+  ],
   "required_sections": [
     "research_scope",
     "theme_identification",
