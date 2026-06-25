@@ -251,6 +251,14 @@ def build_parser() -> argparse.ArgumentParser:
     context_industry.add_argument("--output")
     context_industry.add_argument("--format", choices=("table", "json"), default="json")
 
+    context_industry_chain = context_build_subparsers.add_parser("industry-chain", help="生成主线选股与产业链拆解 context pack")
+    context_industry_chain.add_argument("theme")
+    context_industry_chain.add_argument("--as-of", required=True)
+    context_industry_chain.add_argument("--windows", default="5,20,60", help="逗号分隔 feature 窗口，如 5,20,60")
+    context_industry_chain.add_argument("--preview-limit", type=int, default=20, help="每个 feature/window 的 preview 行数")
+    context_industry_chain.add_argument("--output")
+    context_industry_chain.add_argument("--format", choices=("table", "json"), default="json")
+
     context_stock = context_build_subparsers.add_parser("stock", help="生成个股 context pack")
     context_stock.add_argument("ts_code")
     context_stock.add_argument("--as-of", required=True)
@@ -1381,6 +1389,16 @@ def _handle_context(args: argparse.Namespace, reader: MartReader) -> int:
             payload = builder.build_industry(
                 industry=args.industry,
                 as_of=args.as_of,
+                output_path=args.output,
+            )
+            emit(payload, fmt=args.format)
+            return 0
+        if args.context_pack_type == "industry-chain":
+            payload = builder.build_industry_chain(
+                theme=args.theme,
+                as_of=args.as_of,
+                windows=parse_daily_windows(args.windows),
+                preview_limit=args.preview_limit,
                 output_path=args.output,
             )
             emit(payload, fmt=args.format)

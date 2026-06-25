@@ -2,7 +2,7 @@
 
 本文档说明新架构下每个面向分析数据读取或 LLM 输入的能力分别适合做什么、读取哪些结构化数据、输出什么产物，以及缺数据时应该如何降级。
 
-基础数据目录见 [基础数据维护对照表](maintenance-dataset-catalog.md)。研究框架 prompt 不纳入本表；Codex 默认以用户当次指令为分析入口。
+基础数据目录见 [基础数据维护对照表](../operations/maintenance-dataset-catalog.md)。研究框架 prompt 不纳入本表；Codex 默认以用户当次指令为分析入口。
 
 ## 能力总览
 
@@ -14,8 +14,8 @@
 | Feature 构建读取 | `ashare feature build/read/meta` | mart 分区 | `data/features/{feature}` | 市场结构、行业强度、概念强度、龙头验证、高弹性候选 | 不输出买卖建议 |
 | 外部 Evidence | `ashare evidence ingest/search/export/adapter-*` | curated JSON/JSONL、accepted adapter | `data/evidence/records.jsonl` | 补产业、海外、政策、招投标、capex、价格、产能等项目外事实 | 不覆盖已有 mart 事实，只接受可追溯来源 |
 | Knowledge | `ashare knowledge propose/accept/search/snapshot` | 人工审核 proposal、evidence trace | `data/knowledge/current.jsonl` | 保存实体别名、行业链、公司产品关系等慢变量 | 不代表当日市场强弱 |
-| Context Pack | `ashare context build market-structure/industry/stock` | mart、feature、evidence、knowledge | `data/context_packs/.../context.json` | 把分析所需事实组装成 Codex 可读快照 | 不直接生成结论 |
-| Protocol 模板 | `ashare protocols list/show/validate/output-schema` | registered protocol specs | protocol spec 和输出 schema | 沉淀反复使用的分析模板和质量门 | 不替代用户当次框架 |
+| Context Pack | `ashare context build market-structure/industry/industry-chain/stock` | mart、feature、evidence、knowledge | `data/context_packs/.../context.json` | 把分析所需事实组装成 Codex 可读快照；`industry-chain` 会聚合主题相关 feature preview、evidence、knowledge 和缺口 | 不直接生成结论 |
+| Protocol 模板 | `ashare protocols list/show/validate/output-schema` | registered protocol specs | protocol spec 和输出 schema | 沉淀反复使用的分析模板和质量门；`industry_chain_selection.v1` 用于主线选股、产业链拆解和候选池分层 | 不替代用户当次框架，不输出交易执行指令 |
 | Run 留痕 | `ashare runs record/list/replay` | question、context、evidence、knowledge、输出 | `runs/<run_id>` | 保存分析上下文、artifact hash 和质量门，便于复盘 | 不回流为事实源 |
 
 ## 推荐读取顺序
@@ -24,6 +24,7 @@
 | --- | --- |
 | 全市场短线、题材、风格强弱 | `daily status` 确认可分析 -> 读 market context -> 必要时下钻 mart/feature |
 | 产业方向判断 | 读 market/industry context -> 搜索或入库外部 evidence -> 用龙头和成交趋势验证 |
+| 主线选股与产业链拆解 | 读 `industry-chain` context -> 用 `industry_chain_selection.v1` 组织输出 -> 补产业链 evidence/knowledge -> 下钻候选股财务、公告和公司披露 |
 | 单股研究数据准备 | 读 stock context -> 补必要 mart/feature -> 外部证据只补产业和公司披露缺口 |
 | 海外 capex、协会数据、商品价格 | 优先官方/公司/协会/交易所来源 -> 整理为 evidence -> 高频来源晋升 adapter |
 | 数据缺口排查 | `daily status` 看系统状态，`data check` 查表，context `data_gaps` 看分析影响 |
@@ -44,6 +45,7 @@ LLM 默认不应该直接读 raw store，也不应该现场拼散接口。默认
 | 单股基本面质量 | `income`、`balancesheet`、`cashflow`、`fina_indicator`、`fina_mainbz` | `express`、`dividend`、`fina_audit`、`disclosure_date` | 财务重表需要显式股票池；缺结构化财报时转官方公告/年报抽取 |
 | 事件催化 | `a_stock_notice`、`earnings_forecast` | `top_list`、涨跌停、热度和资金数据 | 公告/业绩预告允许健康空分区；行情侧只用于验证市场是否认可 |
 | 外部产业证据 | 无固定 A 股 mart | evidence record、adapter spec、source registry | 必须记录来源、URL、发布时间、查询时间、置信度和缺口 |
+| 产业链拆解和公司映射 | `industry_strength`、`concept_strength`、`leader_validation`、`elasticity_candidates`、板块成分 mart | evidence、knowledge、财务 mart、公告、公司披露 | 概念成分只能做初筛；公司业务暴露度必须由披露、evidence 或 accepted knowledge 支撑 |
 
 ## 产物字段速查
 
@@ -53,6 +55,7 @@ LLM 默认不应该直接读 raw store，也不应该现场拼散接口。默认
 | `mart metadata` | `dataset`、`partition`、`rows`、`content_hash`、`source` | 确认事实分区来源、行数和内容 hash |
 | `feature metadata` | `feature`、`as_of`、`window`、`inputs`、`content_hash` | 确认可复现评分或排序使用了哪些输入 |
 | `context_pack` | `pack_id`、`as_of`、`coverage`、`facts`、`inputs`、`data_gaps`、`source_policy_summary` | Codex 分析前的默认事实快照 |
+| `industry_chain context` | `theme`、`feature_previews`、`evidence`、`knowledge`、`data_gaps`、`agent_guidance` | 主线选股和产业链拆解前的主题上下文 |
 | `evidence_record` | `claim`、`source_type`、`source_url`、`published_at`、`query_time`、`confidence`、`verification` | 补足项目数据覆盖不了的行业事实 |
 | `knowledge_record` | `subject`、`predicate`、`object`、`confidence`、`source` | 慢变量关系图谱和别名映射 |
 | `run_manifest` | `question`、`protocol_id`、`context_packs`、`evidence`、`knowledge`、`quality` | 复盘本次分析用了哪些材料和质量门 |
@@ -64,3 +67,4 @@ LLM 默认不应该直接读 raw store，也不应该现场拼散接口。默认
 - 外部搜索只能补项目数据覆盖不了的产业事实或公司披露缺口，不能覆盖已有 mart 事实。
 - 重复使用且影响评分、排序或回测的数值来源，应从 curated evidence 晋升为 accepted adapter。
 - 候选票、排序解释、交易状态属于分析输出层，不放进基础数据维护层。
+- 本项目是 Agent 主导的研究系统，不是自动化交易系统；协议输出应使用研究状态、证据强度、风险标记和跟踪计划，不使用买入、卖出、仓位指令作为结论。

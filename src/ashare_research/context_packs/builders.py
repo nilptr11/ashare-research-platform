@@ -30,6 +30,23 @@ MARKET_FEATURES = (
     "leader_validation",
     "elasticity_candidates",
 )
+INDUSTRY_CHAIN_DATASETS = (
+    "stock_basic",
+    "dc_index",
+    "dc_member",
+    "ths_index",
+    "ths_member",
+    "index_member_all",
+    "ci_index_member",
+    "a_stock_notice",
+    "earnings_forecast",
+)
+INDUSTRY_CHAIN_FEATURES = (
+    "industry_strength",
+    "concept_strength",
+    "leader_validation",
+    "elasticity_candidates",
+)
 
 
 class ContextPackBuilder:
@@ -174,6 +191,108 @@ class ContextPackBuilder:
             provenance=self._provenance(),
         )
         return self._write_pack(pack, output_path or self._default_path("industry", as_of=as_of, key=industry))
+
+    def build_industry_chain(
+        self,
+        *,
+        theme: str,
+        as_of: str,
+        windows: list[int] | None = None,
+        output_path: Path | str | None = None,
+        preview_limit: int = 20,
+    ) -> dict[str, Any]:
+        windows = windows or [5, 20, 60]
+        pack_id = f"industry_chain:{_slug(theme)}:{as_of}:{self.version}"
+        inputs: list[ContextInput] = []
+        data_gaps: list[dict[str, Any]] = []
+        quality_flags: list[str] = []
+
+        dataset_checks = self._dataset_checks(
+            INDUSTRY_CHAIN_DATASETS,
+            as_of=as_of,
+            inputs=inputs,
+            data_gaps=data_gaps,
+            quality_flags=quality_flags,
+        )
+        feature_rows = self._feature_summaries(
+            INDUSTRY_CHAIN_FEATURES,
+            as_of=as_of,
+            windows=windows,
+            inputs=inputs,
+            data_gaps=data_gaps,
+            quality_flags=quality_flags,
+        )
+        feature_previews = self._feature_previews(
+            theme=theme,
+            as_of=as_of,
+            windows=windows,
+            preview_limit=preview_limit,
+        )
+        evidence_records = self._evidence_records(industry=theme, limit=80, inputs=inputs, data_gaps=data_gaps)
+        knowledge_records = self._knowledge_records(entity=theme, limit=120, inputs=inputs, data_gaps=data_gaps)
+
+        if not evidence_records:
+            quality_flags.append("missing_industry_chain_evidence")
+        if not knowledge_records:
+            quality_flags.append("missing_industry_chain_knowledge")
+
+        preview_rows = sum(len(item.get("rows") or []) for item in feature_previews)
+        coverage = {
+            "datasets_ready": sum(1 for item in dataset_checks if item["status"] == "ready"),
+            "datasets_total": len(dataset_checks),
+            "features_ready": sum(1 for item in feature_rows if item["status"] == "ready"),
+            "features_total": len(feature_rows),
+            "feature_preview_rows": preview_rows,
+            "evidence_records": len(evidence_records),
+            "knowledge_records": len(knowledge_records),
+        }
+        pack = ContextPack(
+            schema="ashare.context_pack.industry_chain.v1",
+            pack_id=pack_id,
+            pack_type="industry_chain",
+            generated_at=_now_iso(),
+            as_of=as_of,
+            window={"end_trade_date": as_of, "feature_windows": list(windows), "preview_limit": preview_limit},
+            inputs=tuple(inputs),
+            sections={
+                "theme": {
+                    "name": theme,
+                    "protocol": "industry_chain_selection.v1",
+                    "research_states": [
+                        "core_research",
+                        "elastic_watch",
+                        "laggard_watch",
+                        "evidence_needed",
+                        "excluded",
+                    ],
+                },
+                "datasets": {"dataset_checks": dataset_checks},
+                "features": feature_rows,
+                "feature_previews": feature_previews,
+                "evidence": evidence_records,
+                "knowledge": knowledge_records,
+                "data_gaps": data_gaps,
+            },
+            coverage=coverage,
+            data_gaps=tuple(data_gaps),
+            quality_flags=tuple(quality_flags),
+            agent_guidance=_agent_guidance(
+                pack_type="industry_chain",
+                feature_rows=feature_rows,
+                data_gaps=data_gaps,
+                dataset_checks=dataset_checks,
+                inputs=inputs,
+            ),
+            constraints={
+                "latest_complete_trade_date": as_of,
+                "intraday_available": False,
+                "no_trade_execution": True,
+                "feature_scores_are_screening_only": True,
+            },
+            source_policy_summary=source_policy_summary(),
+            provenance=self._provenance(),
+        )
+        return self._write_pack(pack, output_path or self._default_path("industry_chain", as_of=as_of, key=theme))
 
     def build_stock(
         self,
@@ -352,6 +471,42 @@ class ContextPackBuilder:
         if not records:
             data_gaps.append({"kind": "knowledge", "name": "current", "status": "empty", "message": "no matching current knowledge"})
         return [record.to_dict() for record in records]
+
+    def _feature_previews(
+        self,
+        *,
+        theme: str,
+        as_of: str,
+        windows: list[int],
+        preview_limit: int,
+    ) -> list[dict[str, Any]]:
+        previews: list[dict[str, Any]] = []
+        for feature in INDUSTRY_CHAIN_FEATURES:
+            for window in windows:
+                try:
+                    frame = self.feature_store.read_partition(feature, as_of=as_of, window=window)
+                except AShareResearchError as error:
+                    previews.append(
+                        {
+                            "feature": feature,
+                            "window": window,
+                            "status": "missing",
+                            "message": str(error),
+                            "rows": [],
+                        }
+                    )
+                    continue
+                selected, match_mode = _select_feature_preview_rows(frame, feature=feature, theme=theme, limit=preview_limit)
+                previews.append(
+                    {
+                        "feature": feature,
+                        "window": window,
+                        "status": "ready",
+                        "match_mode": match_mode,
+                        "rows": _json_records(selected),
+                    }
+                )
+        return previews
 
     def _stock_mart_rows(
         self,
@@ -584,6 +739,14 @@ def _agent_guidance(
         _append_unique(unsupported, "公司基本面兑现验证")
         _append_unique(unsupported, "订单真实落地验证")
         _append_unique(unsupported, "筹码集中度判断")
+    elif pack_type == "industry_chain":
+        _append_unique(supported, "主线选股上下文准备")
+        _append_unique(supported, "产业链拆解输入准备")
+        _append_unique(supported, "候选池分层输入准备")
+        _append_unique(unsupported, "自动化交易执行")
+        _append_unique(unsupported, "仓位建议")
+        _append_unique(unsupported, "公司业务暴露度最终确认")
+        _append_unique(unsupported, "订单真实落地验证")
     elif pack_type == "stock":
         _append_unique(unsupported, "公司基本面兑现验证")
         _append_unique(unsupported, "订单真实落地验证")
@@ -607,6 +770,81 @@ def _agent_guidance(
 def _append_unique(items: list[str], value: str) -> None:
     if value and value not in items:
         items.append(value)
+
+
+def _select_feature_preview_rows(
+    frame: pd.DataFrame,
+    *,
+    feature: str,
+    theme: str,
+    limit: int,
+) -> tuple[pd.DataFrame, str]:
+    if frame.empty:
+        return frame, "empty"
+    working = frame.copy()
+    text_columns = [
+        column
+        for column in (
+            "name",
+            "industry",
+            "industry_name",
+            "l1",
+            "l2",
+            "l3",
+            "sw_l1_name",
+            "sw_l2_name",
+            "sw_l3_name",
+            "latest_leading",
+            "latest_top_list_reason",
+        )
+        if column in working.columns
+    ]
+    mask = _theme_mask(working, text_columns=text_columns, theme=theme)
+    if mask.any():
+        return _sort_feature_preview(working[mask], feature=feature).head(limit), "theme_filtered"
+    return _sort_feature_preview(working, feature=feature).head(limit), "top_ranked_fallback"
+
+
+def _theme_mask(frame: pd.DataFrame, *, text_columns: list[str], theme: str) -> pd.Series:
+    if not text_columns or not theme.strip():
+        return pd.Series(False, index=frame.index)
+    terms = [term.lower() for term in _theme_terms(theme)]
+    mask = pd.Series(False, index=frame.index)
+    for column in text_columns:
+        values = frame[column].fillna("").astype(str).str.lower()
+        for term in terms:
+            mask = mask | values.str.contains(re.escape(term), regex=True)
+    return mask
+
+
+def _theme_terms(theme: str) -> list[str]:
+    raw_terms = [theme.strip()]
+    raw_terms.extend(item.strip() for item in re.split(r"[,，/|;\s]+", theme) if item.strip())
+    terms: list[str] = []
+    for term in raw_terms:
+        if term and term not in terms:
+            terms.append(term)
+    return terms
+
+
+def _sort_feature_preview(frame: pd.DataFrame, *, feature: str) -> pd.DataFrame:
+    sort_columns = {
+        "industry_strength": ["strength_score", "window_return_pct"],
+        "concept_strength": ["strength_score", "window_return_pct"],
+        "leader_validation": ["leader_score", "window_return_pct"],
+        "elasticity_candidates": ["elasticity_score", "window_return_pct"],
+    }.get(feature, [])
+    existing = [column for column in sort_columns if column in frame.columns]
+    if not existing:
+        return frame
+    return frame.sort_values(existing, ascending=[False] * len(existing))
+
+
+def _json_records(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    if frame.empty:
+        return []
+    clean = frame.where(pd.notna(frame), None)
+    return clean.to_dict(orient="records")
 
 
 def _slug(value: str) -> str:

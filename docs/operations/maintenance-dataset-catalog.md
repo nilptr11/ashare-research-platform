@@ -4,7 +4,7 @@
 
 执行口径以 `ashare daily run/status/report/repair` 和 `ashare data check/build/update` 为准。没有权限、积分不足、单独权限未开通或抓取失败的接口不会被伪装成健康数据；对应分区会在 daily report 或 data check 中体现为缺口、失败或 warning。本文档描述的是项目支持的基础数据目录，不替代实际运行结果。
 
-context pack、feature、evidence、knowledge 和 run 留痕等分析数据输入能力的读取关系见 [分析能力对照表](analysis-capability-catalog.md)。
+context pack、feature、evidence、knowledge 和 run 留痕等分析数据输入能力的读取关系见 [分析能力对照表](../architecture/analysis-capability-catalog.md)。
 
 日常维护默认使用同一个可重入入口，不分收盘版和晚间版。`daily run` 会刷新默认基础库、构建 `5/20/60` feature，并生成 60 个交易日的 market context；基础库本身长期保留，不做 30/60/120 日滚动删除。更长窗口属于分析读取选择，可在 context 或 feature 构建时显式指定。
 

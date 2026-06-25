@@ -7,7 +7,7 @@ from ashare_research.cli import main
 from ashare_research.context_packs import ContextPackBuilder
 from ashare_research.daily import build_status
 from ashare_research.evidence import EvidenceStore
-from ashare_research.features import FeatureBuilder
+from ashare_research.features import FeatureBuilder, FeatureRegistry, FeatureStore
 from ashare_research.knowledge import KnowledgeStore
 from ashare_research.marts import MartReader
 
@@ -105,6 +105,31 @@ def test_industry_context_pack_includes_evidence_and_knowledge(tmp_path):
     assert any(item["kind"] == "knowledge" and item["content_hash"] for item in payload["inputs"])
 
 
+def test_industry_chain_context_pack_includes_feature_previews_evidence_and_knowledge(tmp_path):
+    _write_industry_chain_features(tmp_path)
+    EvidenceStore(tmp_path).ingest_evidence(_evidence_record() | {"industry": "AI"})
+    knowledge_store = KnowledgeStore(tmp_path)
+    proposal = knowledge_store.propose(_knowledge_record())
+    knowledge_store.accept(proposal.proposal_id)
+
+    payload = ContextPackBuilder(tmp_path).build_industry_chain(theme="AI", as_of="20260623", windows=[5], preview_limit=5)
+
+    assert payload["schema"] == "ashare.context_pack.industry_chain.v1"
+    assert payload["pack_type"] == "industry_chain"
+    assert payload["sections"]["theme"]["protocol"] == "industry_chain_selection.v1"
+    assert payload["coverage"]["feature_preview_rows"] >= 4
+    assert payload["coverage"]["evidence_records"] == 1
+    assert payload["coverage"]["knowledge_records"] == 1
+    assert payload["constraints"]["no_trade_execution"] is True
+    assert "自动化交易执行" in payload["agent_guidance"]["unsupported_claims"]
+    previews = {
+        (item["feature"], item["window"]): item
+        for item in payload["sections"]["feature_previews"]
+    }
+    assert previews[("concept_strength", 5)]["match_mode"] == "theme_filtered"
+    assert previews[("leader_validation", 5)]["rows"][0]["name"] == "AI龙头"
+
+
 def test_market_context_exposes_feature_snapshot_precision_notes(tmp_path):
     _write_partition(
         tmp_path,
@@ -200,6 +225,137 @@ def test_cli_context_build_stock(capsys, tmp_path):
     assert payload["schema"] == "ashare.context_pack.stock.v1"
     assert payload["path"] == str(output_path)
     assert output_path.exists()
+
+
+def test_cli_context_build_industry_chain(capsys, tmp_path):
+    output_path = tmp_path / "context" / "industry_chain.json"
+
+    exit_code = main(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "context",
+            "build",
+            "industry-chain",
+            "AI",
+            "--as-of",
+            "20260623",
+            "--windows",
+            "5",
+            "--preview-limit",
+            "3",
+            "--output",
+            str(output_path),
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema"] == "ashare.context_pack.industry_chain.v1"
+    assert payload["path"] == str(output_path)
+    assert output_path.exists()
+
+
+def _write_industry_chain_features(data_dir):
+    registry = FeatureRegistry.builtin()
+    store = FeatureStore(data_dir)
+    common_inputs = {
+        "daily": {"dataset": "daily", "rows": 2},
+        "daily_basic": {"dataset": "daily_basic", "rows": 2},
+        "stock_basic": {"dataset": "stock_basic", "rows": 2},
+        "moneyflow_dc": {"dataset": "moneyflow_dc", "rows": 2},
+        "top_list": {"dataset": "top_list", "rows": 1},
+        "limit_list_ths": {"dataset": "limit_list_ths", "rows": 1},
+        "index_member_all": {"dataset": "index_member_all", "rows": 2},
+    }
+    store.write_partition(
+        registry.require("industry_strength"),
+        pd.DataFrame(
+            [
+                {
+                    "as_of": "20260623",
+                    "window": 5,
+                    "source_dataset": "sw_daily",
+                    "ts_code": "801080.SI",
+                    "name": "AI设备",
+                    "industry_name": "AI设备",
+                    "strength_score": 10.0,
+                    "window_return_pct": 8.0,
+                }
+            ]
+        ),
+        as_of="20260623",
+        window=5,
+        inputs=[
+            {"dataset": "sw_daily", "rows": 1},
+            {"dataset": "ci_daily", "rows": 1},
+            {"dataset": "index_member_all", "rows": 1},
+            {"dataset": "ci_index_member", "rows": 1},
+        ],
+    )
+    store.write_partition(
+        registry.require("concept_strength"),
+        pd.DataFrame(
+            [
+                {
+                    "as_of": "20260623",
+                    "window": 5,
+                    "source_dataset": "dc_index",
+                    "ts_code": "BKAI",
+                    "name": "AI算力",
+                    "latest_pct_chg": 3.0,
+                    "strength_score": 12.0,
+                    "window_return_pct": 9.0,
+                    "latest_leading": "AI龙头",
+                }
+            ]
+        ),
+        as_of="20260623",
+        window=5,
+        inputs=[{"dataset": "dc_index", "rows": 1}],
+    )
+    store.write_partition(
+        registry.require("leader_validation"),
+        pd.DataFrame(
+            [
+                {
+                    "as_of": "20260623",
+                    "window": 5,
+                    "ts_code": "000001.SZ",
+                    "name": "AI龙头",
+                    "sw_l1_name": "AI设备",
+                    "sw_l2_name": "AI服务器",
+                    "sw_l3_name": "AI加速卡",
+                    "leader_score": 20.0,
+                    "window_return_pct": 15.0,
+                }
+            ]
+        ),
+        as_of="20260623",
+        window=5,
+        inputs=list(common_inputs.values()),
+    )
+    store.write_partition(
+        registry.require("elasticity_candidates"),
+        pd.DataFrame(
+            [
+                {
+                    "as_of": "20260623",
+                    "window": 5,
+                    "ts_code": "000002.SZ",
+                    "name": "AI弹性",
+                    "sw_l1_name": "AI设备",
+                    "sw_l2_name": "AI服务器",
+                    "sw_l3_name": "AI连接器",
+                    "elasticity_score": 18.0,
+                    "window_return_pct": 12.0,
+                }
+            ]
+        ),
+        as_of="20260623",
+        window=5,
+        inputs=list(common_inputs.values()),
+    )
 
 
 def _write_partition(data_dir, dataset, key, value, rows):
