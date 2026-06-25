@@ -23,6 +23,7 @@ description: Use when an LLM agent researches A-share market themes, stock candi
 ## 按需读取
 
 - `references/data-map.md`：本地数据地图、数据层级、适用问题和盲区。默认先读。
+- `references/dataset-index.md`：常用 dataset/feature 的快速定位索引。
 - `references/source-registry.md`：本地数据不足时的权威来源和 fetch 原则。
 - `references/reasoning-policy.md`：事实源优先级、降级规则、禁止事项。
 - `prompts/industry-chain-selection-prompt.md`：用户要求主线选股、产业链拆解、候选池分层时读取。

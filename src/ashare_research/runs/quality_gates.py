@@ -17,6 +17,7 @@ def evaluate_quality_gates(
     gates = {
         "schema_gate": _gate("passed" if has_validated_output else "not_evaluated", "validated output not provided"),
         "freshness_gate": _freshness_gate(data_refs, as_of),
+        "data_refs_gate": _data_refs_gate(data_refs),
         "gap_gate": _gap_gate(protocol, data_refs),
         "source_gate": _source_gate(evidence_artifact, knowledge_artifact),
         "confidence_gate": _gate("passed", ""),
@@ -50,6 +51,21 @@ def _gap_gate(protocol: ProtocolSpec, data_refs: dict[str, Any]) -> dict[str, An
     features = data_refs.get("features", [])
     if protocol.required_inputs and not marts and not features:
         return _gate("warning", "no mart or feature refs recorded; data coverage must be checked from run notes")
+    return _gate("passed", "")
+
+
+def _data_refs_gate(data_refs: dict[str, Any]) -> dict[str, Any]:
+    refs = [*data_refs.get("marts", []), *data_refs.get("features", [])]
+    blocked = [
+        ref.get("raw") or ref.get("name")
+        for ref in refs
+        if ref.get("status") in {"missing", "invalid", "unregistered", "schema_mismatch", "empty", "read_error"}
+    ]
+    if blocked:
+        return _gate("blocked", f"data refs not usable: {blocked}")
+    degraded = [ref.get("raw") or ref.get("name") for ref in refs if ref.get("status") == "degraded"]
+    if degraded:
+        return _gate("warning", f"data refs degraded: {degraded}")
     return _gate("passed", "")
 
 

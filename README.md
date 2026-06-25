@@ -15,7 +15,7 @@
 - 把候选股研究输出限定在 `核心研究`、`弹性观察`、`补涨观察`、`待补证据`、`排除` 等研究状态。
 - 通过数据地图、来源注册、protocol 和 run 留痕，让每次 Agent 结论能追溯到数据分区、证据来源和质量门。
 
-Skill 使用入口见 [`SKILL.md`](SKILL.md)、[`AGENTS.md`](AGENTS.md) 和 [`references/data-map.md`](references/data-map.md)。
+Skill 使用入口见 [`SKILL.md`](SKILL.md)、[`AGENTS.md`](AGENTS.md)、[`references/data-map.md`](references/data-map.md) 和 [`references/dataset-index.md`](references/dataset-index.md)。
 产业链研究示例路径见 [`docs/playbooks/industry-chain-selection-playbook.md`](docs/playbooks/industry-chain-selection-playbook.md)。
 Skill-first 目标架构重构提案见 [`docs/refactor/skill-first-rearchitecture.md`](docs/refactor/skill-first-rearchitecture.md)。
 
@@ -207,7 +207,7 @@ uv run ashare runs list
 uv run ashare runs replay runs/<run_id>
 ```
 
-`runs record` 不调用模型，只保存 LLM agent 已完成或正在整理的分析问题、数据引用、输出和质量门。未指定 `--protocol` 时，run 会记录为 `user_directed.v1`，表示分析约束来自用户当次问题和对话中的框架。
+`runs record` 不调用模型，只保存 LLM agent 已完成或正在整理的分析问题、数据引用、输出和质量门。它会校验 `--mart-ref` / `--feature-ref` 指向的分区是否存在、是否可用，并把结果写入 `data_refs.json` 和质量门。未指定 `--protocol` 时，run 会记录为 `user_directed.v1`，表示分析约束来自用户当次问题和对话中的框架。
 
 指定数据根目录：
 

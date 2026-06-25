@@ -32,7 +32,7 @@
 | 资金与流动性 | `moneyflow_dc`, `moneyflow`, `stk_factor` | 市场资金验证、强弱交叉检查 | 独立公司价值判断 |
 | 公告与财务 | `a_stock_notice`, `fina_mainbz`, `income`, `balancesheet`, `cashflow`, `fina_indicator` | 公司暴露度、收入构成、风险事件、财务验证 | 未披露订单或产业外部价格 |
 
-具体注册数据集以 `uv run ashare data list --format json` 为准。
+常用数据定位见 `references/dataset-index.md`；完整注册数据集以 `uv run ashare data list --format json` 为准。
 
 ## Feature 数据族
 

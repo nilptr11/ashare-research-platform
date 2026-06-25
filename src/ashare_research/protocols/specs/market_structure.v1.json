@@ -39,6 +39,7 @@
   "quality_gates": [
     "schema_gate",
     "freshness_gate",
+    "data_refs_gate",
     "gap_gate",
     "source_gate",
     "confidence_gate"

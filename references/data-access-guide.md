@@ -5,7 +5,7 @@
 ## 读取优先级
 
 1. 用户提供的数据和约束。
-2. 本地数据地图：`references/data-map.md`。
+2. 本地数据地图：`references/data-map.md` 和 `references/dataset-index.md`。
 3. 本地 mart / feature / evidence / knowledge。
 4. 数据不足时的权威来源：`references/source-registry.md`。
 5. 可选辅助：protocol、playbook。
@@ -81,4 +81,4 @@ uv run ashare protocols output-schema industry_chain_selection.v1
 uv run ashare runs record --question "..." --protocol PROTOCOL_ID --as-of YYYYMMDD --mart-ref daily:trade_date=YYYYMMDD --feature-ref market_strength:as_of=YYYYMMDD,window=20 --validated-output output.json
 ```
 
-Protocol 约束输出形状。Run 记录分析过程和 artifact hash。Run 不回流为事实源。
+Protocol 约束输出形状。Run 记录分析过程和 artifact hash，并校验已记录的 mart/feature 数据引用。Run 不回流为事实源。

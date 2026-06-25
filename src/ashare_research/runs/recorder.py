@@ -10,7 +10,9 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from ..evidence import EvidenceStore
+from ..features import FeatureRegistry, FeatureStore
 from ..knowledge import KnowledgeStore
+from ..marts.reader import MartReader
 from ..paths import default_data_dir, default_runs_dir
 from ..protocols import ProtocolRegistry, ProtocolSpec
 from ..reports import render_trace_report
@@ -53,7 +55,7 @@ class RunRecorder:
 
         question_artifact = self._write_text(run_dir / "question.md", question, kind="question")
         protocol_artifact = self._write_json(run_dir / "protocol.json", protocol.to_dict(), kind="protocol")
-        data_refs_payload = _data_refs_payload(as_of=as_of, mart_refs=mart_refs or [], feature_refs=feature_refs or [])
+        data_refs_payload = self._data_refs_payload(as_of=as_of, mart_refs=mart_refs or [], feature_refs=feature_refs or [])
         data_refs_artifact = self._write_json(run_dir / "data_refs.json", data_refs_payload, kind="data_refs")
         evidence_artifact = self._copy_or_create_evidence(run_dir, evidence_path)
         knowledge_artifact = self._copy_or_create_knowledge(run_dir, knowledge_path)
@@ -135,6 +137,66 @@ class RunRecorder:
             return _user_directed_protocol(question)
         return ProtocolRegistry.builtin().require(protocol_id)
 
+    def _data_refs_payload(self, *, as_of: str, mart_refs: list[str], feature_refs: list[str]) -> dict[str, Any]:
+        marts = [self._validated_mart_ref(ref) for ref in mart_refs]
+        features = [self._validated_feature_ref(ref) for ref in feature_refs]
+        return {
+            "schema": "ashare.run_data_refs.v1",
+            "as_of": as_of,
+            "marts": marts,
+            "features": features,
+            "validation": _data_refs_validation([*marts, *features]),
+        }
+
+    def _validated_mart_ref(self, raw: str) -> dict[str, Any]:
+        ref = _parse_data_ref(raw, kind="mart")
+        if not ref["partition"]:
+            return ref | {"status": "invalid", "message": "mart ref partition is required"}
+        reader = MartReader(self.data_dir)
+        try:
+            reader.catalog.require(ref["name"])
+            meta = reader.load_meta(ref["name"], ref["partition"])
+        except Exception as error:
+            return ref | {"status": _missing_status(error), "message": str(error)}
+        quality_status = str(meta.quality_status or meta.quality.get("status") or "ok")
+        return ref | {
+            "status": _ready_status(quality_status),
+            "message": str(meta.quality.get("reason") or ""),
+            "rows": meta.rows,
+            "columns": list(meta.columns),
+            "path": str(reader.partition_path(ref["name"], ref["partition"])),
+            "quality_status": quality_status,
+            "published_at": meta.published_at,
+        }
+
+    def _validated_feature_ref(self, raw: str) -> dict[str, Any]:
+        ref = _parse_data_ref(raw, kind="feature")
+        as_of = ref["partition"].get("as_of")
+        window_text = ref["partition"].get("window")
+        if not as_of or not window_text:
+            return ref | {"status": "invalid", "message": "feature ref requires as_of and window"}
+        if FeatureRegistry.builtin().get(ref["name"]) is None:
+            return ref | {"status": "unregistered", "message": f"feature not registered: {ref['name']}"}
+        try:
+            window = int(window_text)
+        except ValueError:
+            return ref | {"status": "invalid", "message": f"invalid feature window: {window_text}"}
+        store = FeatureStore(self.data_dir)
+        try:
+            meta = store.load_meta(ref["name"], as_of=as_of, window=window)
+        except Exception as error:
+            return ref | {"status": _missing_status(error), "message": str(error)}
+        quality_status = str(meta.quality_status or meta.quality.get("status") or "ok")
+        return ref | {
+            "status": _ready_status(quality_status),
+            "message": str(meta.quality.get("reason") or ""),
+            "rows": meta.rows,
+            "columns": list(meta.columns),
+            "path": str(store.partition_path(ref["name"], as_of=as_of, window=window)),
+            "quality_status": quality_status,
+            "generated_at": meta.generated_at,
+        }
+
     def _copy_or_create_evidence(self, run_dir: Path, evidence_path: Path | str | None) -> RunArtifact:
         target = run_dir / "evidence.jsonl"
         source = Path(evidence_path) if evidence_path else EvidenceStore(self.data_dir).records_path
@@ -187,15 +249,6 @@ def _timestamp_for_id(value: str) -> str:
     return value.replace("-", "").replace(":", "").replace("+", "_")
 
 
-def _data_refs_payload(*, as_of: str, mart_refs: list[str], feature_refs: list[str]) -> dict[str, Any]:
-    return {
-        "schema": "ashare.run_data_refs.v1",
-        "as_of": as_of,
-        "marts": [_parse_data_ref(ref, kind="mart") for ref in mart_refs],
-        "features": [_parse_data_ref(ref, kind="feature") for ref in feature_refs],
-    }
-
-
 def _parse_data_ref(raw: str, *, kind: str) -> dict[str, Any]:
     name, _, partition_text = raw.partition(":")
     partition: dict[str, str] = {}
@@ -210,6 +263,44 @@ def _parse_data_ref(raw: str, *, kind: str) -> dict[str, Any]:
         "raw": raw,
         "partition": partition,
     }
+
+
+def _data_refs_validation(refs: list[dict[str, Any]]) -> dict[str, Any]:
+    counts: dict[str, int] = {}
+    for ref in refs:
+        status = str(ref.get("status") or "unknown")
+        counts[status] = counts.get(status, 0) + 1
+    if any(status in counts for status in _BLOCKING_REF_STATUSES):
+        status = "blocked"
+    elif counts.get("degraded"):
+        status = "degraded"
+    else:
+        status = "ready"
+    return {
+        "status": status,
+        "total": len(refs),
+        "counts": counts,
+    }
+
+
+_BLOCKING_REF_STATUSES = {"missing", "invalid", "unregistered", "schema_mismatch", "empty", "read_error"}
+
+
+def _ready_status(quality_status: str) -> str:
+    if quality_status in {"ok", "ready"}:
+        return "ready"
+    if quality_status in {"degraded"}:
+        return "degraded"
+    return quality_status or "ready"
+
+
+def _missing_status(error: Exception) -> str:
+    text = str(error).lower()
+    if "not registered" in text or "not found" in text:
+        return "unregistered"
+    if "missing" in text or "no mart partition" in text:
+        return "missing"
+    return "read_error"
 
 
 def _user_directed_protocol(question: str) -> ProtocolSpec:

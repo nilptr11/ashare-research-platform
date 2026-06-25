@@ -10,7 +10,7 @@ class ProtocolError(AShareResearchError):
     """Raised when protocol specs are invalid or unavailable."""
 
 
-QUALITY_GATES = {"schema_gate", "freshness_gate", "gap_gate", "source_gate", "confidence_gate"}
+QUALITY_GATES = {"schema_gate", "freshness_gate", "data_refs_gate", "gap_gate", "source_gate", "confidence_gate"}
 
 
 @dataclass(frozen=True)
