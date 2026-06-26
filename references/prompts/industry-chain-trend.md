@@ -48,22 +48,21 @@
 - 公司产品、客户、订单、产能、收入构成和产业链位置，必须有公告、财报、IR、交易所问询、合格 evidence 或 traceable relations 支撑。
 - 缺 URL、发布日期、查询时间或具体 claim 的外部材料，只能作为线索，不能支撑高置信结论。
 - 如果本地 evidence / relations / 公告 / 财务不足以支撑重点研究候选，应立即按 `source-registry.md` 补权威来源。
-- 补证成功后，先写成 evidence JSON/JSONL 并执行 `uv run ashare evidence validate` 和 `uv run ashare evidence ingest`；再把新 `evidence_id` 纳入证据判断。
-- 形成可复用产业链节点、产品暴露、上下游、客户或供应关系时，直接执行 `uv run ashare relations ingest`，后续结论引用 relation `id`。
+- 补证成功后，先写成 evidence JSON/JSONL 并执行 `uv run rdf evidence validate` 和 `uv run rdf evidence ingest`；再把新 `evidence_id` 纳入证据判断。
+- 形成可复用产业链节点、产品暴露、上下游、客户或供应关系时，直接执行 `uv run rdf relations ingest`，后续结论引用 relation `id`。
 - 补证失败或暂时无法完成时，才写明未完成补证和降级影响。
 
 ## 数据使用顺序
 
-1. 检查 `daily status`，确认 as-of 日期、数据覆盖和质量。
+1. 用 `rdf datasets list`、`rdf datasets meta` 和 `rdf features meta` 确认 as-of 日期、覆盖和质量。
 2. 用 mart 确认结构化事实：
-   - 行情、指数、行业、公告、财务、资金、成分。
-3. 用 feature 发现候选和强弱：
-   - `market_strength`
-   - `industry_strength`
-   - `concept_strength`
-   - `limit_sentiment`
-   - `leader_validation`
-   - `elasticity_candidates`
+   - `ashare.daily`：A 股收盘后行情和主候选市场线索；
+   - `global.sec_filings`：跨市场参考和海外公司 filing；
+   - `global.sec_ticker_cik` / `global.sec_companyfacts`：海外 issuer 身份映射和 XBRL 财务事实，只做跨市场背景、同业验证、evidence 和 context；
+   - `industry.eastmoney_report_index`：行业研报索引和 evidence seed。
+3. 用 feature 发现候选和补证优先级：
+   - `ashare.daily_momentum`
+   - `industry.report_attention`
 4. 用 evidence / relations / 公告 / 财务验证公司暴露度。
 5. 发现关键公司证据或产业证据不足时，立即按 `source-registry.md` 补权威来源。
 6. 补到外部来源后，先验证并入库 evidence；能沉淀为慢变量关系的，再入库 relations。
@@ -94,14 +93,14 @@
 6. 补证成功后，生成 evidence 文件并执行：
 
 ```bash
-uv run ashare evidence validate evidence.json
-uv run ashare evidence ingest evidence.json
+uv run rdf evidence validate evidence.json
+uv run rdf evidence ingest evidence.json
 ```
 
 7. 若证据能沉淀为产业链节点、产品暴露、上下游、客户或供应关系，生成 relations 文件并执行：
 
 ```bash
-uv run ashare relations ingest relations.json
+uv run rdf relations ingest relations.json
 ```
 
 8. 用入库返回的 `evidence_id` 和 relation `id` 更新候选分层与结构化结论。
@@ -116,7 +115,7 @@ uv run ashare relations ingest relations.json
 
 ## 结构化留痕
 
-如果需要 `runs record` 留痕，Markdown 报告之外必须准备 `model_output.validated.json`，否则质量门无法评估模型结论。
+如果需要留痕，Markdown 报告之外必须准备 `model_output.validated.json`，并用 `uv run rdf runs record` 归档到 `data/runs/`；runs/reports 不回流为事实源。
 
 `model_output.validated.json` 至少包含：
 
@@ -134,19 +133,19 @@ uv run ashare relations ingest relations.json
 
 | source_kind | 必填引用 |
 | --- | --- |
-| `mart` | `source_id`，如 `daily:trade_date=YYYYMMDD` |
+| `mart` | `source_id`，如 `ashare.daily:trade_date=YYYYMMDD` |
 | `feature` | 只能做线索，不能支撑重点公司暴露度 |
 | `evidence` | `evidence_id`，且必须存在于本次 run 的 `evidence.jsonl` |
 | `relations` | `relation_id` 或 `source_id`，且必须存在于本次 run 的 `relations_snapshot.json` |
 
-留痕命令应引用原始报告和结构化结论，不要先手工创建最终 `data/runs/<run-id>` 目录：
+留痕材料应引用原始报告、结构化结论、mart/feature/evidence/relations 引用和质量检查结果；不要把留痕材料当事实源。
 
 ```bash
-uv run ashare runs record \
+uv run rdf runs record \
   --question "..." \
   --as-of YYYYMMDD \
-  --mart-ref daily:trade_date=YYYYMMDD \
-  --feature-ref market_strength:as_of=YYYYMMDD,window=20 \
+  --mart-ref ashare.daily:trade_date=YYYYMMDD \
+  --feature-ref ashare.daily_momentum:as_of=YYYYMMDD,window=20 \
   --model-output-file market-research.md \
   --validated-output model_output.validated.json \
   --run-id YYYYMMDD-industry-chain-trend

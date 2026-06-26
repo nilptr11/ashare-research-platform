@@ -12,5 +12,6 @@ build/
 /reports/
 /runs/
 data/
+data.coldstart-backup-*/
 *.csv
 *.jsonl

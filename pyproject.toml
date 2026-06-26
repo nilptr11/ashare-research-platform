@@ -3,19 +3,20 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ashare-research-platform"
+name = "ashare-data-provider"
 version = "0.1.0"
-description = "A-share research data foundation for LLM research skills."
+description = "A-share first research data foundation for LLM research skills."
 readme = "README.md"
 requires-python = ">=3.14"
 authors = [
-  { name = "ashare-research maintainers" }
+  { name = "ashare-data-provider maintainers" }
 ]
 dependencies = [
   "akshare>=1.18.0",
   "pandas>=2.3.0",
   "pyarrow>=16.0.0",
-  "tushare>=1.4.21"
+  "pypdf>=5.0.0",
+  "tushare>=1.4.21",
 ]
 
 [dependency-groups]
@@ -24,8 +25,8 @@ dev = [
 ]
 
 [project.scripts]
-ashare = "ashare_research.cli:main"
+rdf = "research_data_foundation.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["ashare_research*"]
+include = ["research_data_foundation*"]
