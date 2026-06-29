@@ -13,6 +13,7 @@ from .domains import default_registry
 from .evidence import EvidenceSourceRegistry, EvidenceStore
 from .features import FeatureRegistry, FeatureStore
 from .features.schemas import FeatureSpec
+from .features.windowing import feature_window_coverage
 from .maintenance.financials import financial_period_for_as_of
 from .relations import RelationStore
 from .storage import MartStore, StorageError
@@ -224,6 +225,10 @@ class DataInventory:
                 meta = None
         quality = dict(meta.get("quality", {})) if meta else {}
         quality_status = str(quality.get("status", "")) if quality else ""
+        window_status = self._feature_window_status(spec, as_of=as_of)
+        status = "missing" if latest is None else "ready" if quality_status == "ok" else "degraded"
+        if status == "ready" and any(item.get("input_status") in {"missing", "degraded"} for item in window_status):
+            status = "degraded"
         return {
             "schema": "rdf.feature_inventory_entry.v1",
             "feature_id": spec.id,
@@ -231,7 +236,7 @@ class DataInventory:
             "domain": spec.domain,
             "version": spec.version,
             "role": spec.role,
-            "status": "missing" if latest is None else "ready" if quality_status == "ok" else "degraded",
+            "status": status,
             "partition_count": len(partitions),
             "latest_partition": {"as_of": latest["as_of"], "window": str(latest["window"])} if latest else None,
             "latest_rows": int(meta.get("rows", 0)) if meta else 0,
@@ -240,7 +245,7 @@ class DataInventory:
             "latest_path": str(latest.get("path", "")) if latest else "",
             "inputs": [item.to_dict() for item in spec.inputs],
             "recommended_windows": list(spec.recommended_windows),
-            "window_status": self._feature_window_status(spec, as_of=as_of),
+            "window_status": window_status,
             "usage": spec.usage.to_dict(),
         }
 
@@ -334,65 +339,38 @@ class DataInventory:
 
     def _feature_input_status(self, input_spec: Any, *, as_of: str, window: int) -> dict[str, Any]:
         dataset_id = str(input_spec.dataset_id)
-        try:
-            contract = self.registry.require_dataset(dataset_id)
-        except Exception as error:
-            return {
-                "dataset_id": dataset_id,
-                "role": input_spec.role,
-                "status": "missing",
-                "reason": str(error),
-                "required_window": window,
-                "available_partitions": 0,
-            }
-        partition_key = _input_partition_key(contract)
-        if not partition_key:
-            return {
-                "dataset_id": dataset_id,
-                "role": input_spec.role,
-                "status": "missing",
-                "reason": "input dataset does not have a date-like partition key",
-                "required_window": window,
-                "available_partitions": 0,
-            }
-        partitions = [
-            partition
-            for partition in self.mart.list_partitions(dataset_id)
-            if partition_key in partition and str(partition[partition_key]) <= str(as_of)
-        ]
-        selected = sorted(partitions, key=lambda item: item[partition_key], reverse=True)[:window]
-        quality_statuses = []
+        coverage = feature_window_coverage(
+            mart_store=self.mart,
+            registry=self.registry,
+            dataset_id=dataset_id,
+            as_of=as_of,
+            window=window,
+        )
+        selected = [dict(item) for item in coverage.pop("_read_partitions", [])]
         rows_total = 0
         for partition in selected:
             meta = _read_meta(self.mart, dataset_id, partition)
-            quality_statuses.append(_quality_status(meta))
             rows_total += int(meta.get("rows", 0)) if meta else 0
-        available = len(selected)
-        if available == 0:
-            status = "missing"
-            reason = f"no {dataset_id} partitions at or before {as_of}"
-        elif available < window:
-            status = "degraded"
-            reason = f"only {available} partitions available for requested window {window}"
-        elif any(status and status != "ok" for status in quality_statuses):
-            status = "degraded"
-            reason = "one or more input partitions are degraded"
-        else:
+        coverage_status = str(coverage.get("coverage_status", "missing"))
+        if coverage_status == "ok":
             status = "ready"
-            reason = ""
+        elif coverage_status == "missing":
+            status = "missing"
+        else:
+            status = "degraded"
         return {
             "dataset_id": dataset_id,
             "role": input_spec.role,
             "status": status,
-            "reason": reason,
-            "partition_key": partition_key,
-            "required_window": window,
-            "available_partitions": available,
+            "reason": str(coverage.get("reason", "")),
+            "partition_key": coverage.get("partition_key"),
+            "required_window": int(coverage.get("required_window", window)),
+            "available_partitions": int(coverage.get("available_partitions", 0)),
             "rows_total": rows_total,
-            "selected_range": {
-                "start": selected[-1][partition_key] if selected else None,
-                "end": selected[0][partition_key] if selected else None,
-            },
+            "selected_range": coverage.get("selected_range", {"start": None, "end": None}),
+            "expected_partitions": list(coverage.get("expected_partitions", [])),
+            "missing_partitions": list(coverage.get("missing_partitions", [])),
+            "calendar_status": coverage.get("calendar_status", "not_applicable"),
             "columns": list(input_spec.columns),
             "supports": list(input_spec.supports),
         }
@@ -983,12 +961,16 @@ def _dataset_recovery_action(
 
 def _feature_recovery_action(spec: FeatureSpec, *, entry: dict[str, Any], as_of: str | None) -> dict[str, Any]:
     resolved_as_of = as_of or "YYYYMMDD"
-    windows = [int(item.get("window")) for item in entry.get("window_status", []) if item.get("buildable")]
-    if not windows:
+    window_status = entry.get("window_status", [])
+    windows = [int(item.get("window")) for item in window_status if item.get("buildable")]
+    if not windows and not window_status:
         windows = list(spec.recommended_windows)
-    preferred = 20 if 20 in windows else windows[0] if windows else 20
-    window = str(preferred)
-    command = ["uv", "run", "rdf", "features", "build", spec.id, "--as-of", resolved_as_of, "--window", window]
+    preferred = 20 if 20 in windows else windows[0] if windows else None
+    command = (
+        ["uv", "run", "rdf", "features", "build", spec.id, "--as-of", resolved_as_of, "--window", str(preferred)]
+        if preferred is not None
+        else None
+    )
     input_checks = [
         ["uv", "run", "rdf", "inventory", "datasets", "--as-of", resolved_as_of, "--use", use]
         for item in spec.inputs
@@ -1002,7 +984,7 @@ def _feature_recovery_action(spec: FeatureSpec, *, entry: dict[str, Any], as_of:
     return _action(
         "build_feature",
         dry_run_command=None,
-        execute_command=[*command, "--refresh"],
+        execute_command=[*command, "--refresh"] if command else None,
         requires=[f"Required input dataset: {item.dataset_id}" for item in spec.inputs],
         message="Build only after required mart inputs are ready; feature output is a signal, not company fact proof.",
         extra={
@@ -1143,13 +1125,6 @@ def _placeholder_value(key: str) -> str:
     return values.get(key, key.upper())
 
 
-def _input_partition_key(contract: DatasetContract) -> str | None:
-    for key in ("trade_date", "query_date", "publish_date", "snapshot_date"):
-        if key in contract.partition_keys:
-            return key
-    return contract.partition_keys[0] if len(contract.partition_keys) == 1 else None
-
-
 def _aggregate_input_status(inputs: list[dict[str, Any]]) -> str:
     required = [item for item in inputs if item.get("role") == "required"]
     relevant = required or inputs
@@ -1196,6 +1171,18 @@ def _plan_reason(entry: dict[str, Any]) -> str:
     if status == "missing":
         return "No usable local partition is available for the requested scope."
     if status == "degraded":
+        for window in entry.get("window_status", []):
+            if window.get("input_status") not in {"missing", "degraded"}:
+                continue
+            for input_item in window.get("inputs", []):
+                if input_item.get("status") in {"missing", "degraded"}:
+                    reason = str(input_item.get("reason", ""))
+                    dataset_id = str(input_item.get("dataset_id", "input"))
+                    window_value = window.get("window")
+                    return (
+                        f"Feature inputs are not ready for window {window_value}: {dataset_id}"
+                        f"{': ' + reason if reason else ''}."
+                    )
         quality = entry.get("active_quality") or entry.get("latest_quality") or {}
         reason = quality.get("reason") if isinstance(quality, dict) else ""
         return f"Local partition exists but quality is degraded{': ' + reason if reason else ''}."

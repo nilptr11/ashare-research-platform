@@ -47,6 +47,26 @@ from research_data_foundation.sources.http import HttpBinaryResponse, HttpRespon
 from research_data_foundation.storage import MartStore, RawStore, SourceArtifact, SourceFetchResult, StagingStore, StorageError
 
 
+def _publish_trade_calendar(mart: MartStore, dates: tuple[str, ...], *, closed: tuple[str, ...] = ()) -> None:
+    closed_dates = set(closed)
+    mart.publish(
+        "ashare.trade_calendar",
+        pd.DataFrame(
+            [
+                {
+                    "exchange": "SSE",
+                    "cal_date": trade_date,
+                    "is_open": "0" if trade_date in closed_dates else "1",
+                }
+                for trade_date in dates
+            ]
+        ),
+        partition={"exchange": "SSE"},
+        lineage={"source_id": "test"},
+        refresh=True,
+    )
+
+
 def test_default_registry_models_first_phase_boundaries():
     registry = default_registry()
 
@@ -1161,6 +1181,7 @@ def test_rdf_cli_reports_inventory(capsys, tmp_path):
 def test_feature_inventory_reports_recommended_window_readiness(tmp_path):
     registry = default_registry()
     mart = MartStore(tmp_path, registry)
+    _publish_trade_calendar(mart, ("20260618", "20260619", "20260622", "20260623", "20260624"))
     for index, trade_date in enumerate(("20260618", "20260619", "20260622", "20260623", "20260624"), start=1):
         mart.publish(
             "ashare.daily",
@@ -1195,6 +1216,46 @@ def test_feature_inventory_reports_recommended_window_readiness(tmp_path):
     assert by_window[20]["inputs"][0]["available_partitions"] == 5
     assert plan_item["action"]["buildable_windows"] == [5]
     assert "--window 5" in plan_item["action"]["execute_command"]["text"]
+
+
+def test_feature_inventory_degrades_ready_meta_when_current_inputs_are_incomplete(tmp_path):
+    registry = default_registry()
+    mart = MartStore(tmp_path, registry)
+    _publish_trade_calendar(mart, ("20260618", "20260619", "20260622", "20260623", "20260624"))
+    for index, trade_date in enumerate(("20260618", "20260619", "20260622", "20260623", "20260624"), start=1):
+        mart.publish(
+            "ashare.daily",
+            pd.DataFrame(
+                [
+                    {
+                        "security_id": "000001.SZ",
+                        "trade_date": trade_date,
+                        "open": 10.0,
+                        "high": 10.5,
+                        "low": 9.8,
+                        "close": 10.0 + index,
+                        "pct_chg": 1.0,
+                        "volume": 1000.0,
+                        "amount": 10000.0,
+                    }
+                ]
+            ),
+            partition={"trade_date": trade_date},
+            lineage={"source_id": "tushare"},
+        )
+    FeatureBuilder(data_dir=tmp_path, registry=registry).build("ashare.daily_momentum", as_of="20260624", window=5)
+
+    inventory = DataInventory(tmp_path, registry=registry)
+    feature_entry = next(item for item in inventory.feature_partitions(as_of="20260624") if item["feature_id"] == "ashare.daily_momentum")
+    by_window = {item["window"]: item for item in feature_entry["window_status"]}
+    plan_item = next(item for item in inventory.plan(as_of="20260624", domain="ashare_core")["items"] if item["id"] == "ashare.daily_momentum")
+
+    assert feature_entry["latest_quality"]["status"] == "ok"
+    assert feature_entry["status"] == "degraded"
+    assert by_window[5]["feature_status"] == "ready"
+    assert by_window[20]["input_status"] == "degraded"
+    assert plan_item["status"] == "degraded"
+    assert "Feature inputs are not ready for window 20: ashare.daily" in plan_item["reason"]
 
 
 def test_rdf_cli_reads_dataset_window_by_available_partitions(capsys, tmp_path):
@@ -2144,6 +2205,7 @@ def test_rdf_cli_fetches_global_current_quote_context(monkeypatch, capsys):
 def test_feature_builder_builds_ashare_daily_momentum_from_canonical_daily(tmp_path):
     registry = default_registry()
     mart = MartStore(tmp_path, registry)
+    _publish_trade_calendar(mart, ("20260625", "20260626"))
     for trade_date, rows in {
         "20260625": [
             {"security_id": "000001.SZ", "pct_chg": 1.0, "volume": 1000.0, "amount": 100.0},
@@ -2187,6 +2249,7 @@ def test_feature_builder_builds_ashare_daily_momentum_from_canonical_daily(tmp_p
 def test_feature_builder_builds_ashare_market_strength_from_index_daily(tmp_path):
     registry = default_registry()
     mart = MartStore(tmp_path, registry)
+    _publish_trade_calendar(mart, ("20260625", "20260626"))
     for trade_date, rows in {
         "20260625": [
             {"index_id": "000001.SH", "close": 3000.0, "pct_chg": 1.0, "volume": 100.0, "amount": 1000.0},
@@ -2230,6 +2293,7 @@ def test_feature_builder_builds_ashare_market_strength_from_index_daily(tmp_path
 def test_feature_builder_builds_ashare_industry_and_concept_strength(tmp_path):
     registry = default_registry()
     mart = MartStore(tmp_path, registry)
+    _publish_trade_calendar(mart, ("20260625", "20260626"))
     for trade_date in ("20260625", "20260626"):
         mart.publish(
             "ashare.sw_daily",
@@ -2292,6 +2356,7 @@ def test_feature_builder_builds_ashare_industry_and_concept_strength(tmp_path):
 def test_feature_builder_builds_ashare_limit_sentiment_from_d_and_ths_sources(tmp_path):
     registry = default_registry()
     mart = MartStore(tmp_path, registry)
+    _publish_trade_calendar(mart, ("20260625", "20260626"))
     mart.publish(
         "ashare.limit_list_d",
         pd.DataFrame(
@@ -2356,6 +2421,117 @@ def test_feature_builder_builds_ashare_limit_sentiment_from_d_and_ths_sources(tm
     assert meta.quality["status"] == "degraded"
     assert meta.quality["component_quality"]["ashare.limit_list_d"]["status"] == "partial_window"
     assert meta.quality["component_quality"]["ashare.limit_list_ths"]["status"] == "partial_window"
+
+
+def test_feature_builder_does_not_borrow_older_partitions_for_trading_window(tmp_path):
+    registry = default_registry()
+    mart = MartStore(tmp_path, registry)
+    _publish_trade_calendar(mart, ("20260618", "20260622", "20260623", "20260624", "20260625", "20260626"))
+    for trade_date in ("20260622", "20260623", "20260624", "20260625", "20260626"):
+        mart.publish(
+            "ashare.limit_list_d",
+            pd.DataFrame(
+                [
+                    {
+                        "security_id": "000001.SZ",
+                        "trade_date": trade_date,
+                        "name": "平安银行",
+                        "close": 10.2,
+                        "pct_chg": 10.0,
+                        "limit": "U",
+                    }
+                ]
+            ),
+            partition={"trade_date": trade_date},
+            lineage={"source_id": "tushare"},
+        )
+    for trade_date in ("20260618", "20260622", "20260623", "20260624", "20260626"):
+        mart.publish(
+            "ashare.limit_list_ths",
+            pd.DataFrame(
+                [
+                    {
+                        "security_id": "000002.SZ",
+                        "trade_date": trade_date,
+                        "name": "万科A",
+                        "price": 8.8,
+                        "pct_chg": 10.0,
+                        "limit_type": "涨停池",
+                        "board_tag": "首板",
+                        "open_num": 0.0,
+                        "limit_order": 500.0,
+                        "limit_amount": 6000.0,
+                    }
+                ]
+            ),
+            partition={"trade_date": trade_date},
+            lineage={"source_id": "tushare"},
+        )
+
+    FeatureBuilder(data_dir=tmp_path, registry=registry).build("ashare.limit_sentiment", as_of="20260626", window=5)
+    frame = FeatureStore(tmp_path).read_partition("ashare.limit_sentiment", domain="ashare_core", as_of="20260626", window=5)
+    meta = FeatureStore(tmp_path).load_meta("ashare.limit_sentiment", domain="ashare_core", as_of="20260626", window=5)
+    ths_input = next(item for item in meta.inputs if item["dataset_id"] == "ashare.limit_list_ths")
+
+    assert "20260618" not in set(frame["trade_date"])
+    assert ths_input["available_partitions"] == 4
+    assert ths_input["selected_range"] == {"start": "20260622", "end": "20260626"}
+    assert {"trade_date": "20260625"} in ths_input["missing_partitions"]
+    assert meta.quality["status"] == "degraded"
+    assert meta.quality["component_quality"]["ashare.limit_list_ths"]["status"] == "partial_window"
+
+
+def test_inventory_plan_does_not_recommend_unbuildable_feature_windows(tmp_path):
+    registry = default_registry()
+    mart = MartStore(tmp_path, registry)
+    _publish_trade_calendar(mart, ("20260622", "20260623", "20260624", "20260625", "20260626"))
+    for trade_date in ("20260622", "20260623", "20260624", "20260625", "20260626"):
+        mart.publish(
+            "ashare.limit_list_d",
+            pd.DataFrame(
+                [
+                    {
+                        "security_id": "000001.SZ",
+                        "trade_date": trade_date,
+                        "name": "平安银行",
+                        "close": 10.2,
+                        "pct_chg": 10.0,
+                        "limit": "U",
+                    }
+                ]
+            ),
+            partition={"trade_date": trade_date},
+            lineage={"source_id": "tushare"},
+        )
+    for trade_date in ("20260622", "20260623", "20260624", "20260626"):
+        mart.publish(
+            "ashare.limit_list_ths",
+            pd.DataFrame(
+                [
+                    {
+                        "security_id": "000002.SZ",
+                        "trade_date": trade_date,
+                        "name": "万科A",
+                        "price": 8.8,
+                        "pct_chg": 10.0,
+                        "limit_type": "涨停池",
+                        "board_tag": "首板",
+                        "open_num": 0.0,
+                        "limit_order": 500.0,
+                        "limit_amount": 6000.0,
+                    }
+                ]
+            ),
+            partition={"trade_date": trade_date},
+            lineage={"source_id": "tushare"},
+        )
+
+    plan = DataInventory(tmp_path, registry=registry).plan(as_of="20260626", domain="ashare_core")
+    item = next(item for item in plan["items"] if item["id"] == "ashare.limit_sentiment")
+
+    assert item["action"]["buildable_windows"] == []
+    assert item["action"]["execute_command"] is None
+    assert all(not status["buildable"] for status in item["window_status"])
 
 
 def test_ashare_core_maintainer_runs_rolling_window_and_skips_existing_partitions(tmp_path):
@@ -7135,7 +7311,9 @@ def test_rdf_cli_ingests_manual_evidence_and_relations(capsys, tmp_path):
 
 def test_rdf_cli_builds_and_reads_feature_partition(capsys, tmp_path):
     registry = default_registry()
-    MartStore(tmp_path, registry).publish(
+    mart = MartStore(tmp_path, registry)
+    _publish_trade_calendar(mart, ("20260626",))
+    mart.publish(
         "ashare.daily",
         pd.DataFrame(
             [

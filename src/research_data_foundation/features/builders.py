@@ -7,10 +7,11 @@ import pandas as pd
 
 from ..core.registry import FoundationRegistry
 from ..domains import default_registry
-from ..storage import MartStore, StorageError
+from ..storage import MartStore
 from .registry import FeatureRegistry
 from .schemas import FeatureBuildResult, FeatureError, FeatureSpec
 from .store import FeatureStore
+from .windowing import feature_window_coverage
 
 
 class FeatureBuilder:
@@ -55,17 +56,11 @@ class FeatureBuilder:
         as_of: str,
         window: int,
     ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
-        columns = list(spec.inputs[0].columns)
-        try:
-            daily = self.mart_store.read_window("ashare.daily", as_of=as_of, count=window, columns=columns)
-            inputs = [_input_summary("ashare.daily", daily, status="ok")]
-        except StorageError as error:
-            daily = pd.DataFrame(columns=columns)
-            inputs = [_input_summary("ashare.daily", daily, status="missing", message=str(error))]
+        daily, summary = self._read_window_input(spec.inputs[0], as_of=as_of, window=window)
         if daily.empty:
-            return pd.DataFrame(columns=["as_of", "window", "security_id", "momentum_score", "window_return_pct"]), inputs
+            return pd.DataFrame(columns=["as_of", "window", "security_id", "momentum_score", "window_return_pct"]), [summary]
         frame = _daily_momentum(daily, as_of=as_of, window=window)
-        return frame, inputs
+        return frame, [summary]
 
     def _build_ashare_market_strength(
         self,
@@ -150,23 +145,11 @@ class FeatureBuilder:
         as_of: str,
         window: int,
     ) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
-        columns = list(spec.inputs[0].columns)
-        try:
-            reports = self.mart_store.read_window(
-                "industry.eastmoney_report_index",
-                as_of=as_of,
-                count=window,
-                partition_key="query_date",
-                columns=columns,
-            )
-            inputs = [_input_summary("industry.eastmoney_report_index", reports, status="ok")]
-        except StorageError as error:
-            reports = pd.DataFrame(columns=columns)
-            inputs = [_input_summary("industry.eastmoney_report_index", reports, status="missing", message=str(error))]
+        reports, summary = self._read_window_input(spec.inputs[0], as_of=as_of, window=window, partition_key="query_date")
         if reports.empty:
-            return pd.DataFrame(columns=["as_of", "window", "industry_name", "report_count", "attention_score"]), inputs
+            return pd.DataFrame(columns=["as_of", "window", "industry_name", "report_count", "attention_score"]), [summary]
         frame = _industry_report_attention(reports, as_of=as_of, window=window)
-        return frame, inputs
+        return frame, [summary]
 
     def _read_window_input(
         self,
@@ -177,18 +160,39 @@ class FeatureBuilder:
         partition_key: str | None = None,
     ) -> tuple[pd.DataFrame, dict[str, Any]]:
         columns = list(input_spec.columns)
-        coverage = self._window_coverage(input_spec.dataset_id, as_of=as_of, window=window, partition_key=partition_key)
+        coverage = feature_window_coverage(
+            mart_store=self.mart_store,
+            registry=self.registry,
+            dataset_id=input_spec.dataset_id,
+            as_of=as_of,
+            window=window,
+            partition_key=partition_key,
+        )
+        read_partitions = [dict(item) for item in coverage.pop("_read_partitions", [])]
         if coverage["coverage_status"] == "missing":
             frame = pd.DataFrame(columns=columns)
             return frame, _input_summary(input_spec.dataset_id, frame, status="missing", message=coverage["reason"]) | coverage
         try:
-            frame = self.mart_store.read_window(input_spec.dataset_id, as_of=as_of, count=window, partition_key=partition_key, columns=columns or None)
+            frame = self._read_input_partitions(
+                input_spec.dataset_id,
+                read_partitions,
+                as_of=as_of,
+                window=window,
+                partition_key=partition_key,
+                columns=columns or None,
+            )
             status = str(coverage["coverage_status"])
             message = str(coverage["reason"])
             return frame, _input_summary(input_spec.dataset_id, frame, status=status, message=message) | coverage
         except Exception as error:
             try:
-                frame = self.mart_store.read_window(input_spec.dataset_id, as_of=as_of, count=window, partition_key=partition_key)
+                frame = self._read_input_partitions(
+                    input_spec.dataset_id,
+                    read_partitions,
+                    as_of=as_of,
+                    window=window,
+                    partition_key=partition_key,
+                )
             except Exception:
                 frame = pd.DataFrame(columns=columns)
                 return frame, _input_summary(input_spec.dataset_id, frame, status="missing", message=str(error)) | coverage
@@ -202,66 +206,20 @@ class FeatureBuilder:
                 messages.append(f"missing columns: {missing_columns}")
             return frame, _input_summary(input_spec.dataset_id, frame, status=status, message="; ".join(messages)) | coverage
 
-    def _window_coverage(
+    def _read_input_partitions(
         self,
         dataset_id: str,
+        read_partitions: list[dict[str, str]],
         *,
         as_of: str,
         window: int,
         partition_key: str | None = None,
-    ) -> dict[str, Any]:
-        try:
-            contract = self.registry.require_dataset(dataset_id)
-        except Exception as error:
-            return _coverage_payload(status="missing", reason=str(error), required_window=window)
-        key = partition_key or (contract.partition_keys[0] if len(contract.partition_keys) == 1 else "")
-        if not key:
-            return _coverage_payload(
-                status="missing",
-                reason=f"{dataset_id}: read_window requires partition_key for multi-key datasets",
-                required_window=window,
-            )
-        try:
-            partitions = [
-                partition
-                for partition in self.mart_store.list_partitions(dataset_id)
-                if key in partition and str(partition[key]) <= str(as_of)
-            ]
-        except Exception as error:
-            return _coverage_payload(status="missing", reason=str(error), required_window=window)
-        selected = sorted(partitions, key=lambda item: item[key], reverse=True)[:window]
-        available = len(selected)
-        if available == 0:
-            return _coverage_payload(
-                status="missing",
-                reason=f"no {dataset_id} partitions at or before {as_of}",
-                required_window=window,
-            )
-        quality_statuses: list[str] = []
-        for partition in selected:
-            try:
-                meta = self.mart_store.read_meta(dataset_id, partition)
-            except Exception:
-                quality_statuses.append("missing_meta")
-                continue
-            quality = meta.get("quality", {})
-            quality_statuses.append(str(quality.get("status", "")) if isinstance(quality, dict) else "")
-        if available < window:
-            status = "partial_window"
-            reason = f"only {available} partitions available for requested window {window}"
-        elif any(status and status != "ok" for status in quality_statuses):
-            status = "degraded_input"
-            reason = "one or more input partitions are degraded"
-        else:
-            status = "ok"
-            reason = ""
-        return _coverage_payload(
-            status=status,
-            reason=reason,
-            required_window=window,
-            available_partitions=available,
-            selected_range={"start": selected[-1][key], "end": selected[0][key]},
-        )
+        columns: list[str] | None = None,
+    ) -> pd.DataFrame:
+        if read_partitions:
+            frames = [self.mart_store.read(dataset_id, partition, columns=columns) for partition in read_partitions]
+            return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        return self.mart_store.read_window(dataset_id, as_of=as_of, count=window, partition_key=partition_key, columns=columns)
 
 
 def _daily_momentum(frame: pd.DataFrame, *, as_of: str, window: int) -> pd.DataFrame:
